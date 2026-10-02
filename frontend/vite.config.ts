@@ -10,5 +10,10 @@ export default defineConfig(({ mode }) => {
         '/api': { target: backendUrl ?? 'http://127.0.0.1:18080' },
       },
     },
+    preview: {
+      proxy: {
+        '/api': { target: backendUrl ?? 'http://127.0.0.1:18080' },
+      },
+    },
   };
 });
