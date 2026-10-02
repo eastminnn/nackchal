@@ -18,7 +18,7 @@ try {
   });
   const page=await context.newPage();
   await page.goto(base);
-  await page.getByLabel('오늘의 경매사 이름').waitFor();
+  await page.getByLabel('이메일', { exact: true }).waitFor();
   const renderData=await page.evaluate(()=>({count:window.renderEvents.length,unnecessary:window.renderEvents.filter(event=>event.tree?.some(node=>node.changeDescription?.kind==='unnecessary')).length}));
   await writeFile('.qa/render-report.json',JSON.stringify(renderData,null,2));
   await context.close();

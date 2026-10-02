@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
+import { authenticate } from './auth-fixture.mjs';
 
 await mkdir('.qa/brand', { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -9,6 +10,7 @@ try {
   for (const width of [1440, 375]) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, recordVideo: { dir: '.qa/brand/video', size: { width, height: 900 } } });
     const page = await context.newPage();
+    await authenticate(context);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.clock.install();
@@ -60,6 +62,7 @@ try {
     await context.close();
   }
   const slow = await browser.newPage();
+  await authenticate(slow.context());
   let releaseImages;
   const imagesAllowed = new Promise(resolve => { releaseImages = resolve; });
   await slow.route('**/art/brand/*.png', async route => { await imagesAllowed; await route.continue(); });

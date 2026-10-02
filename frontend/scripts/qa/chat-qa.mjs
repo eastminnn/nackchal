@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { authenticate } from './auth-fixture.mjs';
 
 await mkdir('.qa/chat', { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -10,12 +11,13 @@ try {
   for (const reducedMotion of ['no-preference', 'reduce']) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion });
     const page = await context.newPage();
+    await authenticate(context);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.clock.install();
     await page.goto('http://127.0.0.1:4185/');
     await page.locator('.arrival-screen').waitFor({ state: 'hidden' });
-    await page.getByLabel('오늘의 경매사 이름').fill('동민');
+    await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
     await page.getByRole('button', { name: '참가자를 기다리는 중', exact: true }).waitFor();
     await expect(page.locator('.character-name')).toHaveCount(1);

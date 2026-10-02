@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { authenticate } from './auth-fixture.mjs';
 
 await mkdir('.qa/lobby', { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -10,6 +11,7 @@ try {
   for (const [width, height] of [[1280,720], [1440,900], [1920,1080], [768,900], [375,812]]) {
     const context = await browser.newContext({ viewport: { width, height } });
     const page = await context.newPage();
+    await authenticate(context);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('http://127.0.0.1:4185/');
@@ -22,10 +24,7 @@ try {
     await expect(page.getByRole('heading', { name: '아직 열린 방이 없어요' })).toBeVisible();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const violations = (await new AxeBuilder({ page }).analyze()).violations;
-    await page.getByRole('button', { name: '방 만들기', exact: true }).click();
-    assert.equal(await page.locator('#nickname').evaluate(node => node === document.activeElement), true);
-    assert.match(await page.locator('#nickname-error').textContent(), /닉네임/);
-    await page.getByLabel('오늘의 경매사 이름').fill('동민');
+    await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
     await expect(page.getByRole('button', { name: '참가자를 기다리는 중' })).toBeDisabled();
     await page.getByRole('button', { name: '방 목록', exact: true }).click();
@@ -60,14 +59,13 @@ try {
     assert.equal(await page.locator('.lobby-shell').count(), 0);
     await page.screenshot({ path: `.qa/lobby/entered-${width}.png` });
     await page.getByRole('button', { name: '방 목록', exact: true }).click();
-    assert.equal(await page.getByLabel('오늘의 경매사 이름').inputValue(), '동민');
-    await page.getByLabel('오늘의 경매사 이름').fill('새친구');
+    await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기' }).click();
     await expect(page.getByRole('button', { name: '참가자를 기다리는 중' })).toBeDisabled();
     await page.getByRole('button', { name: '방 목록', exact: true }).click();
     assert.equal(await page.locator('.room-row').count(), 2);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.getByRole('button', { name: '동민의 경매장 입장' }).focus();
+    await page.getByRole('button', { name: '동민의 경매장 입장' }).first().focus();
     await page.keyboard.press('Tab');
     assert.notEqual(await page.locator(':focus').evaluate(element => getComputedStyle(element).outlineStyle), 'none');
     await page.screenshot({ path: `.qa/lobby/focus-${width}.png`, fullPage: true });
