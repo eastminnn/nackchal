@@ -12,6 +12,8 @@
     "lint": "biome check src",
     "doctor": "react-doctor . --verbose",
     "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "qa:paddles": "vitest run src/scene/modelPose.test.ts -t 'plush bidding poses'",
+    "qa:pranks": "vitest run src/scene/modelPose.test.ts -t 'prank reactions'",
     "assets:prepare": "node scripts/assets/prepare-animal-room.mjs",
     "assets:portraits": "node scripts/assets/render-lobby-models.mjs"
   },
