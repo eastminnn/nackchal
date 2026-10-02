@@ -13,3 +13,7 @@ test-results/
 .env.*
 !.env.example
 *.log
+.gradle/
+build/
+out/
+*.iml
