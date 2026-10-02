@@ -1,0 +1,46 @@
+.immersive-game {
+  --plush-paper: #fff4e5;
+  --plush-ink: #503c37;
+  --plush-line: #cfb9a6;
+  --plush-accent: #986055;
+}
+.hud-ready > .button,
+.hud-bidding .button-primary {
+  background: var(--plush-paper);
+  color: var(--plush-ink);
+  border-radius: var(--r3);
+  border: 1px solid var(--plush-line);
+  box-shadow:
+    0 4px 0 var(--plush-accent),
+    0 8px 24px var(--overlay);
+}
+.hud-ready > .button:hover,
+.hud-bidding .button-primary:hover:not(:disabled) {
+  background: #fffaf3;
+}
+.hud-bidding .bid-buttons .button,
+.hud-chat .chat-composer,
+.hud-item,
+.hud-targets,
+.hud-drawer {
+  border-radius: var(--r3);
+}
+.hud-item {
+  background: var(--plush-paper);
+  color: var(--plush-ink);
+  border-color: var(--plush-line);
+  box-shadow: 0 3px 0 var(--plush-line);
+}
+.hud-item.selected,
+.hud-item:hover:not(:disabled) {
+  background: #ecd7d0;
+}
+.hud-item:disabled {
+  opacity: 0.7;
+}
+.hud-exit {
+  border-radius: var(--r3);
+}
+.hud-reveal {
+  border: 1px solid var(--plush-line);
+}

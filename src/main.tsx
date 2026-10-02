@@ -3,6 +3,7 @@ import '@fontsource-variable/outfit';
 import '@fontsource-variable/noto-sans-kr';
 import '@fontsource/dynapuff/latin-700.css';
 import './styles/index.css';
+import { App } from './app/App';
 import { Showcase } from './dev/Showcase';
 
 if (import.meta.env.DEV && import.meta.env.VITE_DISABLE_REACT_DEVTOOLS !== '1') {
@@ -11,4 +12,4 @@ if (import.meta.env.DEV && import.meta.env.VITE_DISABLE_REACT_DEVTOOLS !== '1') 
 }
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element is missing');
-createRoot(root).render(<Showcase />);
+createRoot(root).render(new URLSearchParams(window.location.search).has('showcase') ? <Showcase /> : <App />);
