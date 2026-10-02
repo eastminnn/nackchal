@@ -6,6 +6,7 @@ test-results/
 .qa/
 .pnpm-store/
 /docs/
+/backend/docs/
 .idea/
 .omo/
 .codex/

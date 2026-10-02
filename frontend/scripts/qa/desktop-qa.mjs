@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { authenticate } from './auth-fixture.mjs';
 
 await mkdir('.qa/desktop', { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -10,6 +11,7 @@ try {
   for (const [width, height] of [[1280,720], [1440,900], [1920,1080]]) {
     const context = await browser.newContext({ viewport: { width, height } });
     const page = await context.newPage();
+    await authenticate(context);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.clock.install();
@@ -17,7 +19,7 @@ try {
     await page.locator('.arrival-screen').waitFor({ state: 'hidden' });
     await expect(page.getByRole('heading', { name: '아직 열린 방이 없어요' })).toBeVisible();
     await expect(page.locator('.room-row')).toHaveCount(0);
-    await page.getByLabel('오늘의 경매사 이름').fill('동민');
+    await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
     const waiting = page.getByRole('button', { name: '참가자를 기다리는 중', exact: true });
     await expect(waiting).toBeDisabled();

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { authenticate } from './auth-fixture.mjs';
 
 await mkdir('.qa/animals', { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -10,6 +11,7 @@ try {
   for (const [width, height] of [[1280, 720], [1920, 1080]]) {
     const context = await browser.newContext({ viewport: { width, height }, ...(width === 1280 ? { recordVideo: { dir: '.qa/animals/video', size: { width, height } } } : {}) });
     const page = await context.newPage();
+    await authenticate(context);
     const errors = [];
     const failures = [];
     const models = new Set();
@@ -41,7 +43,7 @@ try {
     const stillB = await canvas.screenshot();
     assert.equal(stillA.equals(stillB), true, 'Reduced motion should freeze the scene');
     const lobbyAxe = await new AxeBuilder({ page }).analyze();
-    await page.getByLabel('오늘의 경매사 이름').fill('동민');
+    await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
     await expect(page.getByRole('button', { name: '참가자를 기다리는 중' })).toBeDisabled();
     assert.equal(await page.locator('.lobby-backdrop').count(), 0);
@@ -59,12 +61,13 @@ try {
     await context.close();
   }
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await authenticate(page.context(), '빠른입장');
   let releaseModels;
   const modelsAllowed = new Promise(resolve => { releaseModels = resolve; });
   await page.route('**/*.glb', async route => { await modelsAllowed; await route.continue(); });
   await page.goto('http://127.0.0.1:4185/');
   await page.getByRole('button', { name: '건너뛰기', exact: true }).click();
-  await page.getByLabel('오늘의 경매사 이름').fill('빠른입장');
+  await expect(page.locator('.profile-account-name')).toHaveText('빠른입장');
   await page.getByRole('button', { name: '방 만들기', exact: true }).click();
   assert.equal(await page.getByRole('button', { name: '모델 불러오는 중…' }).isDisabled(), true);
   releaseModels();
@@ -73,7 +76,7 @@ try {
   await page.reload();
   await page.locator('.arrival-screen').waitFor({ state: 'hidden' });
   await page.locator('.lobby-backdrop[data-ready="true"][data-moving="false"]').waitFor();
-  assert.equal(await page.getByLabel('오늘의 경매사 이름').isEditable(), true);
+  await expect(page.locator('.profile-account-name')).toHaveText('빠른입장');
   console.log('PASS skip intro, enter before models arrive, reduced-motion startup');
   await page.close();
 } finally {

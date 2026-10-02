@@ -27,6 +27,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-nackchal}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       SERVER_PORT: 8080
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET with openssl rand -base64 32}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-18080}:8080"
     depends_on:

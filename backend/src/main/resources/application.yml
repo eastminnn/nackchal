@@ -20,9 +20,19 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
+app:
+  auth:
+    jwt-secret: ${JWT_SECRET:}
+    issuer: nackchal
+    access-ttl: 15m
+    refresh-ttl: 7d
+    cookie-secure: ${AUTH_COOKIE_SECURE:false}
+
 server:
   port: ${SERVER_PORT:18080}
   shutdown: graceful
+  tomcat:
+    max-http-form-post-size: 8KB
 
 management:
   endpoints:
