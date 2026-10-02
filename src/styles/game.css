@@ -1,0 +1,125 @@
+.round-counter {
+  color: var(--secondary);
+  font-family: "Outfit Variable", sans-serif;
+  font-size: var(--t-lg);
+}
+.round-counter strong {
+  color: var(--ink);
+  font-size: var(--t-3xl);
+}
+.timer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-xs);
+  color: var(--secondary);
+}
+.timer strong {
+  color: var(--ink);
+  font:
+    600 var(--t-2xl) / 1 "Outfit Variable",
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.timer-urgent,
+.timer-urgent strong {
+  color: var(--accent);
+}
+.players {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s2);
+  margin-top: var(--s4);
+  padding-bottom: var(--s5);
+}
+.player {
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  min-width: 0;
+  border-radius: var(--r3);
+  padding: var(--s2);
+  position: relative;
+  transition: background var(--fast);
+}
+.player:disabled {
+  cursor: default;
+}
+.player-leading {
+  background: var(--accent-soft);
+}
+.player-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s1);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.player-name small {
+  color: var(--secondary);
+  font-size: 10px;
+}
+.player > .money {
+  display: block;
+  margin-top: var(--s1);
+  font-size: var(--t-lg);
+}
+.players-targeting .player:not(:disabled):hover {
+  background: var(--mint);
+}
+.players-targeting .player:not(:disabled) {
+  background: var(--inset);
+  cursor: crosshair;
+}
+.current-price {
+  font-size: var(--t-6xl);
+  letter-spacing: -0.05em;
+  line-height: 1.15;
+  margin-top: var(--s3);
+}
+.bid-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s2);
+  margin-top: var(--s4);
+}
+.bid-buttons .button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s3) 0;
+  font-size: var(--t-lg);
+  font-family: "Outfit Variable", "Noto Sans KR Variable", sans-serif;
+}
+.bid-buttons small {
+  font-family: "Noto Sans KR Variable", sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+}
+@media (max-width: 600px) {
+  .round-counter strong {
+    font-size: var(--t-2xl);
+  }
+  .players {
+    gap: 0;
+    margin-top: var(--s2);
+    padding-bottom: var(--s3);
+  }
+  .player {
+    padding: var(--s1);
+  }
+  .player-name {
+    flex-wrap: wrap;
+    gap: 2px;
+    line-height: 1.5;
+  }
+  .player > .money {
+    font-size: var(--t-base);
+  }
+  .bid-buttons .button {
+    flex-direction: row;
+    gap: var(--s2);
+    min-height: 48px;
+  }
+}

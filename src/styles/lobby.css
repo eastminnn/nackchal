@@ -1,0 +1,215 @@
+.site-header {
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  gap: var(--s4);
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  font:
+    750 var(--t-3xl) / 1 "Outfit Variable",
+    sans-serif;
+  letter-spacing: -0.055em;
+}
+.site-header nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.header-divider {
+  height: 20px;
+  width: 1px;
+  background: var(--line);
+  margin: 0 var(--s3);
+}
+.site-header nav .cash {
+  margin-right: var(--s3);
+}
+.skip-link {
+  position: absolute;
+  top: -60px;
+  left: 16px;
+  z-index: 50;
+  background: var(--paper);
+  padding: var(--s3);
+}
+.skip-link:focus {
+  top: 8px;
+}
+.demo-note {
+  font-size: var(--t-xs);
+  line-height: 1.75;
+  color: var(--secondary);
+  margin-top: var(--s3);
+}
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s3);
+}
+.section-heading p {
+  margin-top: var(--s1);
+  font-size: var(--t-xs);
+}
+.loadout-section {
+  padding-left: var(--s12);
+  border-left: 1px solid var(--line);
+}
+.slot-count {
+  font:
+    500 var(--t-sm) / 1 "Outfit Variable",
+    sans-serif;
+  color: var(--secondary);
+}
+.loadout-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+  margin-top: var(--s4);
+}
+.loadout-choice {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--s2);
+  padding: var(--s2);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  text-align: left;
+  color: var(--ink);
+}
+.loadout-choice .object-art {
+  width: 60px;
+}
+.loadout-choice span {
+  flex: 1;
+}
+.loadout-choice strong {
+  display: block;
+  font-size: var(--t-sm);
+}
+.loadout-choice small {
+  color: var(--secondary);
+  font-size: var(--t-xs);
+}
+.loadout-choice:disabled {
+  cursor: default;
+}
+.loadout-choice:disabled > svg:last-child {
+  opacity: 0.3;
+}
+.loadout-slots {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+.loadout-slots button,
+.empty-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  background: var(--inset);
+  color: var(--secondary);
+  font-size: var(--t-xs);
+  border-radius: var(--r1);
+  flex: 1;
+  white-space: nowrap;
+}
+.loadout-slots button:hover {
+  background: var(--line);
+}
+.loadout-slots :where(button) > span {
+  margin-left: auto;
+}
+.empty-slot {
+  background: transparent;
+  border: 1px dashed var(--line);
+}
+.site-footer {
+  display: flex;
+  gap: var(--s4);
+  align-items: center;
+  padding-block: var(--s6);
+  border-top: 1px solid var(--line);
+  margin-top: var(--s6);
+}
+.footer-brand {
+  font:
+    700 var(--t-lg) / 1 "Outfit Variable",
+    sans-serif;
+  letter-spacing: -0.04em;
+}
+.footer-brand span {
+  color: var(--accent);
+}
+.site-footer p {
+  font-size: var(--t-xs);
+}
+.site-footer > span:last-child {
+  margin-left: auto;
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+  color: var(--secondary);
+  font-size: var(--t-xs);
+}
+@media (max-width: 900px) {
+  .loadout-section {
+    padding-left: var(--s6);
+  }
+  .site-header :where(nav) .button {
+    padding-inline: var(--s3);
+  }
+}
+@media (max-width: 600px) {
+  .site-header {
+    height: 72px;
+  }
+  .wordmark {
+    font-size: 28px;
+  }
+  .site-header nav {
+    gap: 0;
+  }
+  .site-header :where(nav) .button {
+    padding: var(--s2);
+    min-width: 40px;
+  }
+  .site-header :where(nav) :where(.button) span {
+    display: none;
+  }
+  .site-header nav .cash {
+    margin: 0 var(--s2);
+  }
+  .cash > span,
+  .header-divider {
+    display: none;
+  }
+  .loadout-section {
+    padding: var(--s6) 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .site-footer {
+    flex-wrap: wrap;
+    gap: var(--s2) var(--s3);
+  }
+  .site-footer > span:last-child {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+.section-heading h2 {
+  font-size: var(--t-lg);
+}
