@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.DS_Store
+.vite/
+test-results/
+.qa/
+.pnpm-store/
+/docs/
+.idea/
+.omo/
+.codex/
+.env
+.env.*
+!.env.example
+*.log

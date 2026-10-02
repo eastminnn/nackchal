@@ -1,0 +1,249 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+}
+button,
+input {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+a {
+  color: inherit;
+}
+button,
+a,
+input {
+  outline-offset: 4px;
+}
+:focus-visible {
+  outline: 3px solid var(--ink);
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+  word-break: keep-all;
+}
+h1 {
+  line-height: 1.25;
+  letter-spacing: -0.045em;
+}
+h2 {
+  font-size: var(--t-2xl);
+  letter-spacing: -0.04em;
+}
+h3 {
+  font-size: var(--t-lg);
+  letter-spacing: -0.03em;
+}
+p {
+  line-height: 1.75;
+  color: var(--secondary);
+}
+svg {
+  display: block;
+  flex-shrink: 0;
+}
+.container {
+  max-width: 1200px;
+  margin: auto;
+  padding: 0 var(--s8);
+}
+.cluster {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+.button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 48px;
+  padding: var(--s3) var(--s5);
+  border-radius: var(--r2);
+  border: 1px solid transparent;
+  font-size: var(--t-sm);
+  font-weight: 650;
+  transition:
+    transform var(--fast) var(--ease),
+    background var(--fast),
+    box-shadow var(--fast);
+  white-space: nowrap;
+}
+.button:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+.button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.button-primary {
+  color: var(--paper);
+  background: var(--accent);
+}
+.button-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.button-secondary {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.button-secondary:hover:not(:disabled),
+.button-ghost:hover:not(:disabled),
+.button-icon:hover:not(:disabled) {
+  background: var(--inset);
+}
+.button-ghost,
+.button-icon {
+  background: transparent;
+  color: var(--secondary);
+}
+.button-icon {
+  padding: var(--s3);
+  min-width: 44px;
+  min-height: 44px;
+}
+.button:disabled {
+  background: var(--inset);
+  color: var(--secondary);
+  border-color: transparent;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 6px var(--s3);
+  border-radius: 100px;
+  background: var(--inset);
+  color: var(--secondary);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-live {
+  background: var(--mint);
+  color: var(--mint-ink);
+}
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r4);
+  padding: var(--s6);
+}
+.cash {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: var(--t-xs);
+  color: var(--secondary);
+}
+.cash svg {
+  color: var(--gold-ink);
+}
+.cash strong {
+  color: var(--ink);
+  font-family: "Outfit Variable", sans-serif;
+  font-size: var(--t-lg);
+}
+.money {
+  font-family: "Outfit Variable", sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--s3) var(--s4);
+  min-height: 48px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+}
+input::placeholder {
+  color: var(--secondary);
+  font-weight: 400;
+}
+.avatar-art,
+.object-art {
+  width: 100%;
+  height: auto;
+}
+.eyebrow {
+  color: var(--secondary);
+  font-size: var(--t-xs);
+  letter-spacing: 0.13em;
+  font-weight: 600;
+  font-family: "Outfit Variable", sans-serif;
+}
+.muted {
+  color: var(--secondary);
+  font-size: var(--t-sm);
+}
+.error {
+  color: var(--danger);
+  font-size: var(--t-sm);
+  min-height: 20px;
+}
+.showcase {
+  padding-block: var(--s12);
+  display: grid;
+  gap: var(--s6);
+}
+.showcase .panel {
+  display: grid;
+  gap: var(--s6);
+}
+.showcase-avatar {
+  width: 80px;
+}
+.showcase-objects {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 600px) {
+  .container {
+    padding-inline: var(--s4);
+  }
+  .showcase-objects {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --fast: 0ms;
+    --normal: 0ms;
+    --reveal: 0ms;
+    --projectile: 0ms;
+  }
+  .button:hover:not(:disabled),
+  .button:active:not(:disabled) {
+    transform: none;
+  }
+}
