@@ -2,7 +2,7 @@
 
 물건의 가치를 맞히고, 채팅하고, 친구에게 토마토를 던지는 경매 파티 게임입니다.
 
-프론트엔드는 로컬 미리보기이며, 백엔드는 Spring Boot와 PostgreSQL의 개발 환경까지 구성돼 있습니다. 게임 상태는 아직 브라우저 메모리에 있습니다. 실제 사람끼리 하는 입찰·채팅, 로그인, WebSocket, DB 저장은 다음 단계에서 연결합니다.
+이메일·비밀번호 가입과 로그인은 Spring Boot·PostgreSQL에 연결돼 있습니다. 게임 상태는 아직 브라우저 메모리에 있으며, 실제 사람끼리 하는 입찰·채팅과 WebSocket은 다음 단계에서 연결합니다.
 
 ## 디렉토리
 
@@ -26,7 +26,7 @@ nackchal/
 └── docker-compose.yml        # Nginx·Spring·PostgreSQL
 ```
 
-게임 화면·모델 제작은 [프론트엔드 안내](frontend/README.md), 서버 구조·설정은 [백엔드 안내](backend/README.md)를 참고합니다. `docs/`는 로컬 문서로 유지하며 Git에 포함하지 않습니다.
+게임 화면·모델 제작은 [프론트엔드 안내](frontend/README.md), 서버 구조·설정은 [백엔드 안내](backend/README.md)를 참고합니다. `docs/`와 `backend/docs/`는 로컬 문서로 유지하며 Git에 포함하지 않습니다.
 
 ## 전체 환경 실행
 
@@ -34,6 +34,12 @@ Docker와 Docker Compose가 필요합니다. 최초 실행 때만 환경변수 �
 
 ```sh
 cp -n .env.example .env
+openssl rand -base64 32
+```
+
+출력된 값을 `.env`의 `JWT_SECRET=` 뒤에 넣습니다. 디코딩한 길이가 32바이트 이상인 Base64 키가 필수이며 기본값은 없습니다. 기존 로그인 유지를 위해 서버를 재시작하거나 배포할 때도 같은 키를 사용합니다.
+
+```sh
 docker compose up -d --build --wait
 ```
 
@@ -52,6 +58,10 @@ docker compose down
 ```
 
 `down` 후에도 PostgreSQL 데이터는 named volume에 남습니다. 예시 비밀번호와 loopback 포트는 로컬 개발용입니다. Oracle 배포 전에 도메인·HTTPS·운영 비밀번호·외부 포트 정책을 따로 적용해야 합니다. 현재 설정은 공개 배포가 아닙니다.
+
+첫 화면에서 가입한 뒤 로그인합니다. `user`는 프로필, `auth`는 가입·로그인·토큰 갱신을 담당합니다. 인증에는 서버 세션 대신 HttpOnly 쿠키로 전달하는 JWT access 토큰(15분)과 refresh 토큰(최초 로그인부터 7일)을 사용합니다. refresh 토큰은 갱신할 때마다 교체되며 DB에는 해시만 저장합니다. 갱신해도 최초 만료일은 늘어나지 않습니다. 같은 `JWT_SECRET`과 DB를 유지하면 서버 재시작 후에도 로그인 상태를 복구할 수 있습니다.
+
+로그아웃은 refresh 토큰을 폐기하고 브라우저 쿠키를 지웁니다. 별도로 복사된 access JWT는 즉시 폐기되지 않으며 남은 유효기간(최대 15분) 동안 사용할 수 있습니다. HTTPS 배포 시 `AUTH_COOKIE_SECURE=true`를 설정합니다. Nginx는 가입·로그인 요청을 IP별 분당 10회, 초과분 20회까지 순간 허용하며 초과 시 429를 반환합니다. 외부 요청은 Nginx로만 받고 백엔드 포트는 공개하지 않습니다.
 
 프론트만 수정한 경우 다음 명령은 프론트 컨테이너만 다시 만듭니다.
 
@@ -100,6 +110,7 @@ pnpm -C frontend build
 pnpm -C frontend preview --port 4185 --strictPort
 # 다른 터미널에서 실행
 pnpm -C frontend qa:game
+pnpm -C frontend qa:auth
 pnpm -C frontend qa:chat
 pnpm -C frontend qa:models
 ```
