@@ -1,0 +1,15 @@
+.git
+.idea
+.codex
+.omo
+.qa
+docs
+**/node_modules
+**/dist
+**/.qa
+**/.gradle
+**/build
+**/.env*
+**/*.log
+.pnpm-store
+backend
