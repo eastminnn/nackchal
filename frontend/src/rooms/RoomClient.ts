@@ -7,6 +7,8 @@ interface Snapshot {
   readonly room: SharedRoom | null;
   readonly error: string;
   readonly pending: boolean;
+  /** 서버 시각 - 브라우저 시각(ms). 단계 마감 시각을 브라우저 시계로 바꿀 때 뺀다. */
+  readonly clockOffset: number;
 }
 interface Pending {
   readonly type: RoomCommand['type'];
@@ -14,7 +16,14 @@ interface Pending {
   readonly timer: ReturnType<typeof setTimeout>;
 }
 export class RoomClient {
-  private state: Snapshot = { status: 'connecting', rooms: [], room: null, error: '', pending: false };
+  private state: Snapshot = {
+    status: 'connecting',
+    rooms: [],
+    room: null,
+    error: '',
+    pending: false,
+    clockOffset: 0,
+  };
   private readonly listeners = new Set<() => void>();
   private readonly requests = new Map<string, Pending>();
   private listVersion = -1;
@@ -97,7 +106,7 @@ export class RoomClient {
         if (this.state.room?.id === message.room.id && this.state.room.version > message.room.version) return;
         this.restoringRoomId = null;
         sessionStorage.setItem(this.storageKey, message.room.id);
-        this.publish({ room: message.room });
+        this.publish({ room: message.room, clockOffset: message.serverTime - Date.now() });
         return;
       case 'LEFT':
         this.left();

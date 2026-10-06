@@ -28,6 +28,7 @@ const fixture = () =>
       { userId, nickname: '고양이', avatarCode: 'plush-cat', seat: 2, ready: true, connected: true },
     ],
     chats: [{ id: 1, userId: peerId, nickname: '토끼', body: '안녕', at: 10 }],
+    game: null,
   });
 function setup() {
   const client = new RoomClient(userId);
@@ -58,20 +59,20 @@ describe('shared room state boundary', () => {
   it('preserves the newest room and directory when stale snapshots arrive', () => {
     const { client, handlers } = setup();
     const room = fixture();
-    handlers.onMessage({ type: 'ROOM_STATE', room });
+    handlers.onMessage({ type: 'ROOM_STATE', serverTime: 0, room });
     handlers.onMessage({
       type: 'ROOM_LIST',
       version: 4,
       rooms: [{ ...room, players: 2, status: 'waiting' }],
     });
-    handlers.onMessage({ type: 'ROOM_STATE', room: { ...room, version: 1, players: [] } });
+    handlers.onMessage({ type: 'ROOM_STATE', serverTime: 0, room: { ...room, version: 1, players: [] } });
     handlers.onMessage({ type: 'ROOM_LIST', version: 3, rooms: [] });
     expect(client.getSnapshot().room?.players).toHaveLength(2);
     expect(client.getSnapshot().rooms).toHaveLength(1);
   });
   it('leaves an existing room unchanged when a different join fails', async () => {
     const { client, handlers } = setup();
-    handlers.onMessage({ type: 'ROOM_STATE', room: fixture() });
+    handlers.onMessage({ type: 'ROOM_STATE', serverTime: 0, room: fixture() });
     const id = '00000000-0000-4000-8000-000000000009';
     vi.spyOn(crypto, 'randomUUID').mockReturnValueOnce(id);
     const sent = client.command({ type: 'JOIN_ROOM', roomId: 'OTHER1' });
@@ -89,7 +90,7 @@ describe('shared room state boundary', () => {
   });
   it('clears restore intent after duplicate connection rejection', () => {
     const { client, handlers } = setup();
-    handlers.onMessage({ type: 'ROOM_STATE', room: fixture() });
+    handlers.onMessage({ type: 'ROOM_STATE', serverTime: 0, room: fixture() });
     handlers.onMessage(error('00000000-0000-4000-8000-000000000009', 'ROOM_CONNECTION_CONFLICT'));
     handlers.onMessage({
       type: 'WELCOME',
@@ -104,7 +105,7 @@ describe('shared room state boundary', () => {
   });
   it('clears room and restore intent only after leave is acknowledged', async () => {
     const { client, handlers } = setup();
-    handlers.onMessage({ type: 'ROOM_STATE', room: fixture() });
+    handlers.onMessage({ type: 'ROOM_STATE', serverTime: 0, room: fixture() });
     const id = '00000000-0000-4000-8000-000000000009';
     vi.spyOn(crypto, 'randomUUID').mockReturnValueOnce(id);
     const sent = client.command({ type: 'LEAVE_ROOM' });
@@ -140,5 +141,61 @@ describe('shared room state boundary', () => {
     ]);
     expect(view.chats[0]?.playerId).toBe(peerId);
     expect(room.players[1]?.userId).toBe(userId);
+  });
+  it('maps a live auction to local time and hides leadership after the game ends', () => {
+    const room = fixture();
+    const game = {
+      gameId: '00000000-0000-4000-8000-0000000000aa',
+      status: 'AUCTION',
+      round: 3,
+      totalRounds: 10,
+      phaseEndsAt: 50_000,
+      lot: { kind: 'radio', name: '라디오', description: '', hint: '레어' },
+      auction: {
+        price: 12,
+        leaderUserId: userId,
+        bidVersion: 2,
+        extendedMs: 0,
+        bids: [{ userId, amount: 12, at: 40_000 }],
+      },
+      players: [
+        { userId, balance: 88, left: false },
+        { userId: peerId, balance: 100, left: false },
+      ],
+      reveal: null,
+      history: [],
+      result: null,
+    };
+    const user: User = { id: room.hostUserId, nickname: '고양이', avatarCode: 'plush-cat' };
+    const live = waitingView(initialState(), sharedRoomSchema.parse({ ...room, game }), user, 1_000);
+    expect(live.phase).toBe('auction');
+    expect(live.deadline).toBe(49_000);
+    expect(live.leader).toBe('me');
+    expect(live.bids[0]).toMatchObject({ playerId: 'me', amount: 12, at: 39_000 });
+    expect(live.players.map((player) => [player.id, player.balance])).toEqual([
+      ['me', 88],
+      [peerId, 100],
+    ]);
+    expect(live.revealed).toBeNull();
+
+    const finished = sharedRoomSchema.parse({
+      ...room,
+      game: {
+        ...game,
+        status: 'FINISHED',
+        phaseEndsAt: null,
+        result: { ranking: [{ userId: peerId, rank: 1, balance: 140, reward: 10 }] },
+      },
+    });
+    const results = waitingView(initialState(), finished, user);
+    expect(results.phase).toBe('results');
+    expect(results.leader).toBeNull();
+    expect(results.ranking[0]).toMatchObject({ player: { id: peerId, name: '토끼' }, rank: 1, reward: 10 });
+  });
+  it('records server clock offset from room snapshots', () => {
+    vi.setSystemTime(10_000);
+    const { client, handlers } = setup();
+    handlers.onMessage({ type: 'ROOM_STATE', serverTime: 12_500, room: fixture() });
+    expect(client.getSnapshot().clockOffset).toBe(2_500);
   });
 });
