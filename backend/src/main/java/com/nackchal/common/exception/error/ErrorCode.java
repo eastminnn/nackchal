@@ -39,6 +39,19 @@ public enum ErrorCode {
     ROOM_SERVER_FULL(HttpStatus.SERVICE_UNAVAILABLE, "ROOM_SERVER_FULL", "지금은 방을 더 만들 수 없어요. 잠시 후 다시 시도해 주세요."),
     INVALID_CHAT(HttpStatus.BAD_REQUEST, "INVALID_CHAT", "채팅은 1~100자로 입력해 주세요."),
     CHAT_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "CHAT_RATE_LIMITED", "채팅은 1초에 한 번씩 보낼 수 있어요."),
+    ROOM_IN_GAME(HttpStatus.CONFLICT, "ROOM_IN_GAME", "게임이 진행 중인 방이에요. 끝난 뒤 입장해 주세요."),
+
+    // 게임 시작과 입찰
+    GAME_NOT_HOST(HttpStatus.FORBIDDEN, "GAME_NOT_HOST", "방장만 게임을 시작할 수 있어요."),
+    GAME_NOT_ENOUGH_PLAYERS(HttpStatus.CONFLICT, "GAME_NOT_ENOUGH_PLAYERS", "2명 이상 모이면 시작할 수 있어요."),
+    GAME_PLAYERS_NOT_READY(HttpStatus.CONFLICT, "GAME_PLAYERS_NOT_READY", "모든 참가자가 준비해야 시작할 수 있어요."),
+    GAME_ALREADY_STARTED(HttpStatus.CONFLICT, "GAME_ALREADY_STARTED", "이미 게임이 진행 중이에요."),
+    GAME_NOT_FOUND(HttpStatus.CONFLICT, "GAME_NOT_FOUND", "진행 중인 게임이 아니에요."),
+    BID_CLOSED(HttpStatus.CONFLICT, "BID_CLOSED", "이번 경매는 이미 마감됐어요."),
+    BID_STALE(HttpStatus.CONFLICT, "BID_STALE", "다른 입찰이 먼저 들어왔어요."),
+    BID_ALREADY_LEADING(HttpStatus.CONFLICT, "BID_ALREADY_LEADING", "이미 최고 입찰자예요."),
+    BID_TOO_LOW(HttpStatus.BAD_REQUEST, "BID_TOO_LOW", "현재 가격보다 높은 금액을 입력해 주세요."),
+    BID_INSUFFICIENT_BALANCE(HttpStatus.CONFLICT, "BID_INSUFFICIENT_BALANCE", "보유한 게임 머니가 부족해요."),
 
     // 서버 오류
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "일시적인 오류가 발생했어요. 잠시 후 다시 시도해 주세요."),
