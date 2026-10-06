@@ -11,7 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 public interface WalletRepository extends JpaRepository<Wallet, UUID> {
 
     /** 잔액을 읽지 않고 DB에서 바로 더해 동시 지급이 서로를 덮어쓰지 않게 한다. 바뀐 행 수를 돌려준다. */
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update Wallet wallet set wallet.balance = wallet.balance + :amount, wallet.updatedAt = :now "
             + "where wallet.userId = :userId")
     int add(UUID userId, long amount, Instant now);
