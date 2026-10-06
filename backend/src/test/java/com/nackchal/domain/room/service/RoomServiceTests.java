@@ -2,6 +2,7 @@ package com.nackchal.domain.room.service;
 
 import com.nackchal.common.exception.CustomException;
 import com.nackchal.common.exception.error.ErrorCode;
+import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
 import java.time.Clock;
@@ -10,6 +11,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -282,6 +284,122 @@ class RoomServiceTests {
         service.removeUser(first.userId());
         service.create(actor());
         assertThat(service.list()).hasSize(1000);
+    }
+
+    @Test
+    void onlyHostStartsWhenTwoConnectedPlayersAndEveryGuestIsReady() {
+        RoomActor host = actor();
+        var room = service.create(host);
+        expect(ErrorCode.GAME_NOT_ENOUGH_PLAYERS, () -> service.startGame(host));
+        RoomActor guest = actor();
+        RoomActor late = actor();
+        service.join(guest, room.id());
+        service.join(late, room.id());
+        expect(ErrorCode.GAME_NOT_HOST, () -> service.startGame(guest));
+        service.ready(guest, true);
+        expect(ErrorCode.GAME_PLAYERS_NOT_READY, () -> service.startGame(host));
+        service.ready(late, true);
+        service.disconnect(late);
+        expect(ErrorCode.GAME_PLAYERS_NOT_READY, () -> service.startGame(host));
+        RoomActor lateAgain = reconnect(late);
+        service.join(lateAgain, room.id());
+        service.ready(lateAgain, true);
+
+        var started = service.startGame(host);
+        assertThat(started.game().status()).isEqualTo("AUCTION");
+        assertThat(started.game().players()).hasSize(3);
+        expect(ErrorCode.GAME_ALREADY_STARTED, () -> service.startGame(host));
+        assertThat(service.list()).singleElement()
+                .satisfies(summary -> assertThat(summary.status()).isEqualTo("playing"));
+    }
+
+    @Test
+    void gameBlocksNewPlayersAndReadyButAllowsReconnect() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = startedRoom(host, guest);
+        expect(ErrorCode.ROOM_IN_GAME, () -> service.join(actor(), room.id()));
+        expect(ErrorCode.GAME_ALREADY_STARTED, () -> service.ready(guest, false));
+        service.disconnect(guest);
+        var rejoined = service.join(reconnect(guest), room.id());
+        assertThat(rejoined.game().players()).extracting(player -> player.userId()).contains(guest.userId());
+        assertThat(rejoined.game().status()).isEqualTo("AUCTION");
+    }
+
+    @Test
+    void simultaneousBidsOnSameVersionAcceptExactlyOne() throws Exception {
+        RoomActor host = actor();
+        List<RoomActor> guests = List.of(actor(), actor(), actor());
+        var room = startedRoom(host, guests.toArray(RoomActor[]::new));
+        var game = room.game();
+        List<RoomActor> bidders = new ArrayList<>(guests);
+        bidders.add(host);
+        var start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(bidders.size())) {
+            List<Future<ErrorCode>> results = new ArrayList<>();
+            for (RoomActor bidder : bidders) results.add(pool.submit(() -> {
+                start.await();
+                try { service.placeBid(bidder, game.gameId(), 1, 0, 10); return null; }
+                catch (CustomException exception) { return exception.getErrorCode(); }
+            }));
+            start.countDown();
+            List<ErrorCode> codes = new ArrayList<>();
+            for (var result : results) codes.add(result.get(5, TimeUnit.SECONDS));
+            assertThat(codes.stream().filter(Objects::isNull).count()).as(codes.toString()).isEqualTo(1);
+            assertThat(codes).filteredOn(code -> code != null).containsOnly(ErrorCode.BID_STALE);
+        }
+        var auction = service.find(room.id()).orElseThrow().game().auction();
+        assertThat(auction.price()).isEqualTo(10);
+        assertThat(auction.bidVersion()).isEqualTo(1);
+    }
+
+    @Test
+    void timerAdvancesPhasesAndFinishedGameRequiresReadyAgain() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = startedRoom(host, guest);
+        long version = room.version();
+        events.clear();
+        service.advanceGames();
+        assertThat(events).isEmpty();
+        clock.advance(20_000);
+        service.advanceGames();
+        var sold = service.find(room.id()).orElseThrow();
+        assertThat(sold.game().status()).isEqualTo("SOLD");
+        assertThat(sold.version()).isGreaterThan(version);
+        assertThat(events).containsExactly(new RoomChangedEvent(room.id()));
+
+        clock.advance(28_000 * 10);
+        service.advanceGames();
+        var finished = service.find(room.id()).orElseThrow();
+        assertThat(finished.game().status()).isEqualTo("FINISHED");
+        assertThat(finished.game().result().ranking()).hasSize(2);
+        assertThat(finished.players()).noneMatch(player -> player.ready());
+        assertThat(service.list()).singleElement()
+                .satisfies(summary -> assertThat(summary.status()).isEqualTo("waiting"));
+        service.join(actor(), room.id());
+    }
+
+    @Test
+    void leavingDownToOnePlayerAbortsGame() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = startedRoom(host, guest);
+        service.leave(guest);
+        var aborted = service.find(room.id()).orElseThrow();
+        assertThat(aborted.game().status()).isEqualTo("ABORTED");
+        assertThat(aborted.game().players()).filteredOn(player -> player.left())
+                .extracting(player -> player.userId()).containsExactly(guest.userId());
+        service.ready(host, true);
+    }
+
+    private RoomResponse startedRoom(RoomActor host, RoomActor... guests) {
+        var room = service.create(host);
+        for (RoomActor guest : guests) {
+            service.join(guest, room.id());
+            service.ready(guest, true);
+        }
+        return service.startGame(host);
     }
 
     private static RoomActor actor() {

@@ -2,6 +2,7 @@ package com.nackchal.domain.room.service;
 
 import com.nackchal.common.exception.CustomException;
 import com.nackchal.common.exception.error.ErrorCode;
+import com.nackchal.domain.auction.model.AuctionGame;
 import com.nackchal.domain.room.dto.response.RoomChatResponse;
 import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.dto.response.RoomSummaryResponse;
@@ -21,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 /** 사용자별 입장과 방별 변경을 직렬화하는 메모리 대기실 저장소. */
@@ -45,12 +47,13 @@ public class RoomService {
         for (int i = 0; i < userLocks.length; i++) userLocks[i] = new Object();
     }
 
-    /** 로비에 보여줄 방 목록. 빈 방은 제외하고 코드 순으로 정렬한다. */
+    /** 로비에 보여줄 방 목록. 빈 방은 제외하고 코드 순으로 정렬한다. 게임 중인 방은 playing이다. */
     public List<RoomSummaryResponse> list() {
         return rooms.values().stream().map(room -> {
             synchronized (room) {
                 return new RoomSummaryResponse(room.id, room.name, room.members.size(), MAX_PLAYERS,
-                        room.members.size() == MAX_PLAYERS ? "full" : "waiting", room.host());
+                        room.playing() ? "playing" : room.members.size() == MAX_PLAYERS ? "full" : "waiting",
+                        room.host());
             }
         }).filter(room -> room.players() > 0).sorted(Comparator.comparing(RoomSummaryResponse::id)).toList();
     }
@@ -112,7 +115,8 @@ public class RoomService {
     /**
      * 방에 입장한다. 같은 연결의 재입장은 현재 상태만 돌려주고, 재접속 대기 중인 자리는 새 연결로 복귀시킨다.
      * 새 참가자는 비어 있는 가장 앞 좌석을 받는다.
-     * @throws CustomException ROOM_ALREADY_JOINED, ROOM_NOT_FOUND, ROOM_CONNECTION_CONFLICT, ROOM_FULL
+     * 게임이 진행 중이면 새 참가자는 받지 않고 재접속만 허용한다.
+     * @throws CustomException ROOM_ALREADY_JOINED, ROOM_NOT_FOUND, ROOM_CONNECTION_CONFLICT, ROOM_IN_GAME, ROOM_FULL
      */
     public RoomResponse join(RoomActor actor, String roomId) {
         expireDisconnected();
@@ -133,6 +137,7 @@ public class RoomService {
                     member.actor = actor;
                     member.disconnectedAt = null;
                 } else {
+                    if (room.playing()) throw error(ErrorCode.ROOM_IN_GAME);
                     if (room.members.size() >= MAX_PLAYERS) throw error(ErrorCode.ROOM_FULL);
                     int seat = 0;
                     while (room.occupied(seat)) seat++;
@@ -157,11 +162,12 @@ public class RoomService {
     }
 
     /**
-     * 준비 상태 변경. 값이 같으면 version을 올리지 않는다.
-     * @throws CustomException ROOM_NOT_JOINED
+     * 준비 상태 변경. 값이 같으면 version을 올리지 않는다. 게임 중에는 바꿀 수 없다.
+     * @throws CustomException ROOM_NOT_JOINED, GAME_ALREADY_STARTED
      */
     public RoomResponse ready(RoomActor actor, boolean ready) {
         return mutate(actor, false, (room, member) -> {
+            if (room.playing()) throw error(ErrorCode.GAME_ALREADY_STARTED);
             if (member.ready == ready) return false;
             member.ready = ready;
             return true;
@@ -189,6 +195,61 @@ public class RoomService {
             if (room.chats.size() > 30) room.chats.removeFirst();
             return true;
         });
+    }
+
+    /**
+     * 방장이 게임을 시작한다. 연결된 참가자가 2명 이상이고 방장을 뺀 전원이 준비해야 한다.
+     * 재접속 대기 중인 참가자는 준비가 해제돼 있으므로 시작을 막는다.
+     * @throws CustomException ROOM_NOT_JOINED, GAME_NOT_HOST, GAME_ALREADY_STARTED, GAME_NOT_ENOUGH_PLAYERS,
+     *                         GAME_PLAYERS_NOT_READY
+     */
+    public RoomResponse startGame(RoomActor actor) {
+        return mutate(actor, false, (room, member) -> {
+            if (!actor.userId().equals(room.host())) throw error(ErrorCode.GAME_NOT_HOST);
+            if (room.playing()) throw error(ErrorCode.GAME_ALREADY_STARTED);
+            long connected = room.members.values().stream().filter(other -> other.disconnectedAt == null).count();
+            if (connected < MIN_PLAYERS) throw error(ErrorCode.GAME_NOT_ENOUGH_PLAYERS);
+            boolean othersReady = room.members.entrySet().stream()
+                    .filter(entry -> !entry.getKey().equals(actor.userId()))
+                    .allMatch(entry -> entry.getValue().ready);
+            if (!othersReady) throw error(ErrorCode.GAME_PLAYERS_NOT_READY);
+            room.game = AuctionGame.start(room.members.keySet(), clock.instant(), random);
+            return true;
+        });
+    }
+
+    /**
+     * 입찰. 같은 방의 다른 명령·단계 전환과 같은 방 잠금 안에서 처리하므로 먼저 잠금을 얻은 입찰이 이긴다.
+     * 판정 시각은 클라이언트 시각이 아니라 잠금을 얻은 서버 시각이다.
+     * @throws CustomException ROOM_NOT_JOINED, GAME_NOT_FOUND
+     * @throws com.nackchal.domain.auction.model.BidRejectedException 입찰 규칙 위반 (현재 경매 상태 포함)
+     */
+    public RoomResponse placeBid(RoomActor actor, UUID gameId, int round, long expectedBidVersion, int amount) {
+        return mutate(actor, false, (room, member) -> {
+            if (room.game == null) throw error(ErrorCode.GAME_NOT_FOUND);
+            room.game.bid(actor.userId(), gameId, round, expectedBidVersion, amount, clock.instant());
+            return true;
+        });
+    }
+
+    /**
+     * 마감 시각이 지난 게임 단계를 넘긴다. 100ms마다 실행한다. 마감을 예약하지 않고 매번 현재 마감 시각과
+     * 비교하므로, 마감이 연장돼도 오래된 예약이 라운드를 두 번 마감하는 일이 없다.
+     */
+    @Scheduled(fixedDelay = 100)
+    public void advanceGames() {
+        Instant now = clock.instant();
+        List<String> changed = new ArrayList<>();
+        rooms.values().forEach(room -> {
+            synchronized (room) {
+                if (room.playing() && room.game.advance(now)) {
+                    if (!room.game.inProgress()) resetReady(room);
+                    room.version++;
+                    changed.add(room.id);
+                }
+            }
+        });
+        publish(changed);
     }
 
     /** 연결 종료 처리. 자리는 30초 동안 남기고 준비는 해제한다. 이미 교체된 연결이면 무시한다. */
@@ -261,12 +322,21 @@ public class RoomService {
         return response;
     }
 
-    /** 참가자를 제거한다. 방장은 따로 저장하지 않아 남은 참가자 중 가장 먼저 들어온 사람이 자동으로 이어받는다. */
+    /**
+     * 참가자를 제거한다. 방장은 따로 저장하지 않아 남은 참가자 중 가장 먼저 들어온 사람이 자동으로 이어받는다.
+     * 게임 중이면 이탈로 기록하고, 그 때문에 게임이 중단되면 남은 참가자의 준비를 해제한다.
+     */
     private boolean remove(WaitingRoom room, UUID userId) {
+        if (room.playing() && room.game.leave(userId) && !room.game.inProgress()) resetReady(room);
         room.members.remove(userId);
         memberships.remove(userId, room);
         if (room.members.isEmpty() && rooms.remove(room.id, room)) roomCount.decrementAndGet();
         return true;
+    }
+
+    /** 게임이 끝나면 다음 판을 위해 모두 다시 준비하게 한다. */
+    private static void resetReady(WaitingRoom room) {
+        room.members.values().forEach(member -> member.ready = false);
     }
 
     /** 같은 사용자의 요청을 순서대로 처리한다. 잠금 256개를 해시로 나눠 사용자마다 객체를 만들지 않는다. */
