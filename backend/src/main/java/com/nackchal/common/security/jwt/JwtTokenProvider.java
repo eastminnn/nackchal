@@ -90,4 +90,8 @@ public class JwtTokenProvider {
             throw new BadJwtException("Invalid token subject", exception);
         }
     }
+
+    public Instant expiresAt(String token) {
+        return decoder.decode(token).getExpiresAt();
+    }
 }
