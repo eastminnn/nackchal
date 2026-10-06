@@ -53,6 +53,17 @@ try {
   await expect(row(watcher).getByRole('button')).toBeDisabled();
   record('host starts game', 'both players see round 01 with $100; lobby shows the room as 경매 중');
 
+  await host.getByRole('button', { name: '뻐큐', exact: true }).click();
+  await expect(host.getByRole('button', { name: /^뻐큐, \d초 뒤 가능$/ })).toBeDisabled();
+  await guest.waitForTimeout(1200);
+  await shot(guest, 'emote-middle-finger');
+  await guest.getByRole('button', { name: '담배', exact: true }).click();
+  await host.waitForTimeout(1400);
+  await shot(host, 'emote-smoke');
+  await host.waitForTimeout(1000);
+  await shot(host, 'emote-smoke-puff');
+  record('emotes', 'a pressed emote starts a cooldown and is visible on the other page');
+
   await guest.getByRole('button', { name: '5달러 입찰', exact: true }).click();
   await expect(host.locator('.hud-leader')).toHaveText('경매손님');
   await expect(host.locator('.current-price')).toContainText('5');
