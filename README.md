@@ -118,6 +118,8 @@ pnpm -C frontend build
 
 백엔드 테스트는 Docker가 실행 중이어야 합니다. Testcontainers가 임시 PostgreSQL과 무작위 HTTP 포트를 사용하므로 개발 DB나 다른 프로젝트의 포트를 공유하지 않습니다.
 
+GitHub Actions(`.github/workflows/ci.yml`)는 `main` 대상 PR과 `main` 푸시마다 위 명령과 같은 백엔드 테스트·프론트 검사·빌드를 실행하고, 백엔드·프론트 Docker 이미지가 빌드되는지 확인합니다. 이미지를 레지스트리에 올리거나 배포하지는 않습니다. 백엔드 테스트가 실패하면 테스트 리포트를 실행 결과의 아티팩트로 7일간 보관합니다.
+
 브라우저 검증은 `frontend/`에서 실행하며 결과도 `frontend/.qa/`에 저장됩니다.
 
 ```sh
