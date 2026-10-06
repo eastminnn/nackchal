@@ -104,6 +104,22 @@ curl https://nackchal.duckdns.org/api/health
 
 백엔드 재시작 시 진행 중인 경매는 사라지며, 이전 실행에서 끝내지 못한 판은 보상 없이 중단으로 기록됩니다.
 
+### DB 백업
+
+서버 cron이 매일 03:00(한국 시간)에 `deploy/backup.sh`를 실행합니다. `pg_dump` custom 형식(압축)으로 DB 전체를 뽑아 서버 `~/backups`에 최근 3개를 남기고, OCI Object Storage 버킷 `nackchal-backups`(오사카, 비공개)에 올린 뒤 14일이 지난 원격 백업을 지웁니다. 실행 기록은 `~/backups/backup.log`에 남습니다.
+
+업로드는 인스턴스 주체로 인증합니다. 동적 그룹 `nackchal-server`(이 인스턴스만 포함)와 정책 `nackchal-backup`이 이 버킷의 읽기·쓰기만 허용하므로 서버에 OCI API 키가 없습니다. OCI CLI는 `ghcr.io/oracle/oci-cli` 컨테이너로 실행합니다.
+
+`deploy/restore-check.sh`는 버킷의 최신 백업(또는 지정한 백업)을 임시 PostgreSQL 컨테이너에 되살려 운영 DB와 행 수를 비교하고 지웁니다. 운영 DB는 읽기만 합니다. 실제 복원은 서비스를 멈추고 실행합니다.
+
+```sh
+ssh -i ~/.ssh/oracle.key ubuntu@161.33.13.111 '~/nackchal/deploy/restore-check.sh'
+# 실제 복원 (운영 DB를 백업 시점으로 되돌림)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml stop backend
+docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < ~/backups/<백업 파일>
+docker compose -f docker-compose.yml -f docker-compose.prod.yml start backend
+```
+
 ## 로컬 개발
 
 프론트엔드는 Node.js 24와 pnpm 11.19.0을 사용합니다.
