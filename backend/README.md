@@ -45,6 +45,19 @@ com.nackchal
     │   ├── entity/
     │   ├── repository/
     │   └── dto/response/
+    ├── auction/model/         # AuctionGame, AuctionRules, GameSettlement (Spring 없는 경매 규칙)
+    ├── game                   # 게임 시작·종료 기록, 정산 실행기, 기동 시 정리
+    │   ├── config/
+    │   ├── entity/
+    │   ├── repository/
+    │   └── service/
+    ├── wallet                 # 캐시 잔액·원장, GET /api/wallet
+    │   ├── controller/
+    │   ├── service/
+    │   ├── repository/
+    │   ├── entity/
+    │   ├── event/
+    │   └── dto/response/
     └── auth
         ├── controller/
         ├── service/
@@ -57,9 +70,9 @@ com.nackchal
 
 컨트롤러는 HTTP 입출력을 처리하고 `AuthService`가 가입·비밀번호 확인·현재 사용자 조회를 담당합니다. `AuthTokenService`는 토큰 발급·갱신·폐기, `AuthCookieService`는 쿠키 발급·삭제를 맡습니다. `user` 도메인은 닉네임과 캐릭터 프로필을 관리합니다. 엔티티를 응답으로 반환하지 않습니다. 새로운 기능은 `domain/<기능>` 아래 같은 기준으로 추가하고 필요한 레이어만 만듭니다. 테스트도 `common`과 `domain` 구조를 따릅니다.
 
-코드 작성 방식도 참고 프로젝트를 따릅니다. 생성자로 의존성을 주입하고, DB 서비스는 클래스에 읽기 전용 트랜잭션을 선언한 뒤 쓰기 메서드에 `@Transactional`을 붙입니다. 메모리 기반 `RoomService`는 사용자별 입장 잠금과 방별 잠금으로 상태를 보호하며 DB 트랜잭션을 사용하지 않습니다. DTO는 record와 `from`·`of` 팩터리를 사용합니다. 클래스 주석에는 역할을 짧게 적고 서비스의 업무 예외는 `@throws`로 안내합니다. 본문 주석에는 동시 가입 충돌, CSRF, 오류 응답처럼 코드만으로 의도를 알기 어려운 이유를 남깁니다.
+코드 작성 방식도 참고 프로젝트를 따릅니다. 생성자로 의존성을 주입하고, DB 서비스는 클래스에 읽기 전용 트랜잭션을 선언한 뒤 쓰기 메서드에 `@Transactional`을 붙입니다. 메모리 기반 `RoomService`는 사용자별 입장 잠금과 방별 잠금으로 상태를 보호합니다. 게임 시작·정산의 DB 트랜잭션은 이 잠금을 쥐지 않은 상태에서만 실행합니다. DTO는 record와 `from`·`of` 팩터리를 사용합니다. 클래스 주석에는 역할을 짧게 적고 서비스의 업무 예외는 `@throws`로 안내합니다. 본문 주석에는 동시 가입 충돌, CSRF, 오류 응답처럼 코드만으로 의도를 알기 어려운 이유를 남깁니다.
 
-`V1__create_accounts.sql`은 기존 마이그레이션으로 유지합니다. `V2__rename_users_and_add_refresh_tokens.sql`이 `accounts`를 `users`, `email_credentials.account_id`를 `user_id`로 변경하고 `refresh_tokens`를 추가합니다. 기존 UUID·프로필·인증 정보는 유지됩니다. 가입 시 `users`와 `email_credentials`를 같은 트랜잭션에 저장하며, 이메일은 소문자·앞뒤 공백 제거 후 유니크 제약으로 보호합니다. 적용한 마이그레이션은 수정하지 않고 다음 버전을 추가합니다. Hibernate는 `ddl-auto=validate`입니다.
+`V1__create_accounts.sql`은 기존 마이그레이션으로 유지합니다. `V2__rename_users_and_add_refresh_tokens.sql`이 `accounts`를 `users`, `email_credentials.account_id`를 `user_id`로 변경하고 `refresh_tokens`를 추가합니다. 기존 UUID·프로필·인증 정보는 유지됩니다. 가입 시 `users`와 `email_credentials`를 같은 트랜잭션에 저장하며, 이메일은 소문자·앞뒤 공백 제거 후 유니크 제약으로 보호합니다. `V3__create_wallets_and_games.sql`은 `wallets`, `cash_transactions`, `games`, `game_participants`, `round_results`를 추가하고 기존 사용자에게 잔액 0인 지갑을 만듭니다. 가입은 지갑도 같은 트랜잭션에 저장합니다. 적용한 마이그레이션은 수정하지 않고 다음 버전을 추가합니다. Hibernate는 `ddl-auto=validate`입니다.
 
 ## 인증 API
 
@@ -118,7 +131,8 @@ Vite와 Nginx는 WebSocket 업그레이드를 전달합니다. 허용 목록은 
 | --- | --- | --- |
 | 클라이언트 → 서버 | `START_GAME` | 방장만. 연결된 참가자 2명 이상, 방장을 뺀 전원 준비 |
 | 클라이언트 → 서버 | `PLACE_BID` | `gameId`, `round`, `expectedBidVersion`, 최종 금액 `amount` |
-| 서버 → 클라이언트 | `ROOM_STATE` | `room.game`에 게임 상태, 최상위 `serverTime`에 서버 시각 |
+| 서버 → 클라이언트 | `ROOM_STATE` | `room.game`에 게임 상태(`settlement` 포함), `room.starting`, 최상위 `serverTime`에 서버 시각 |
+| 서버 → 클라이언트 | `WALLET` | 정산 후 본인 캐시 잔액. 보상받은 사용자의 연결에만 보냄 |
 
 - **단계**: `AUCTION`(20초, 마감 3초 이내 입찰 시 3초로 연장, 라운드당 최대 15초) → `SOLD`(5초, 낙찰가 차감) → `REVEAL`(3초, 실제 가치 지급) → 다음 라운드. 10라운드 뒤 `FINISHED`, 남은 참가자가 1명 이하가 되면 `ABORTED`.
 - **입찰 검사 순서**: `GAME_NOT_FOUND` → `BID_CLOSED` → `BID_STALE` → `BID_ALREADY_LEADING` → `BID_TOO_LOW` → `BID_INSUFFICIENT_BALANCE`. `BID_*` 오류의 `ERROR` 이벤트에는 현재 `auction`(가격·최고 입찰자·버전)을 함께 보냅니다.
@@ -126,7 +140,13 @@ Vite와 Nginx는 WebSocket 업그레이드를 전달합니다. 허용 목록은 
 - **숨은 정보**: 실제 등급·가치는 서버 메모리에만 있고 `REVEAL` 단계의 `reveal`과 이후 `history`에만 포함합니다.
 - **입장·퇴장**: 진행 중에는 새 참가자를 `ROOM_IN_GAME`으로 거절하고 재접속만 허용합니다. 퇴장자는 `left: true`로 남아 입찰은 유지되지만 순위에서 빠집니다. 게임이 끝나면 모든 준비를 해제합니다.
 
-게임 머니만 다루며 DB에 저장하지 않습니다. 결과의 `reward`는 표시용이고 캐시 지급과 장난 아이템은 지갑·인벤토리 구현 후 추가합니다.
+- **시작 기록**: `START_GAME`은 방을 `starting`으로 표시하고 잠금을 푼 뒤 `games(RUNNING)`과 참가자(`ACTIVE`)를 저장합니다. 저장이 끝나면 다시 잠가 경매를 열며 타이머는 그 시각부터 잽니다. 저장에 실패하면 방을 되돌리고 `GAME_START_FAILED`(503)를 보냅니다. 시작 중에는 새 입장·준비 변경을 막고, 그사이 나간 참가자는 바로 이탈로 처리합니다.
+- **정산**: 게임이 끝나는 모든 경로(타이머, 퇴장, 로그아웃, 재접속 유예 만료)에서 `AuctionGame.takeSettlement()`로 결과를 한 번만 꺼내 잠금을 푼 뒤 `GameSettlementDispatcher`(전용 스레드 2개)에 넘깁니다. `GameRecordService.settle`은 게임 행을 `FOR UPDATE`로 잠그고 `RUNNING`일 때만 참가자 결과·라운드 10개·보상을 한 트랜잭션에 저장합니다. 보상은 `WalletService`가 원장(`cash_transactions`)과 잔액을 함께 바꾸며 `(game_id, user_id)` 조건부 유니크 인덱스가 중복 지급을 한 번 더 막습니다. 실패하면 1·3·10초 뒤 다시 시도합니다.
+- **정산 상태**: `game.settlement`는 진행 중 `null`, 끝나면 `PENDING` → `COMPLETED` 또는 `FAILED`입니다. 정산 결과는 같은 판일 때만 방에 반영하므로 다음 판이 이미 시작됐어도 섞이지 않습니다.
+- **중단된 판**: `ABORTED`로 기록하고 보상과 라운드 결과는 저장하지 않습니다. 이탈자는 끝까지 남은 판에서도 `LEFT`, 보상 0입니다.
+- **서버 재시작**: 기동 시 남은 `RUNNING` 판을 `ABORTED`로 정리합니다. 정산이 재시도 끝에 실패했거나 정산 도중 서버가 꺼진 판은 보상을 잃습니다.
+
+게임 머니·입찰·타이머는 메모리에만 있습니다. 캐시는 게임 순위로만 받으며 가입 보상은 없습니다. 인증된 `GET /api/wallet`은 JWT의 사용자 잔액만 `{ "balance": number }`로 돌려줍니다.
 
 ## 공통 예외 처리
 
@@ -155,10 +175,10 @@ Vite와 Nginx는 WebSocket 업그레이드를 전달합니다. 허용 목록은 
 
 `NackchalApplicationTests`는 Testcontainers의 `postgres:18-alpine`을 띄워 DB 연결, 실제 HTTP health·readiness 응답, 환경정보 엔드포인트 비공개를 검사합니다. H2로 대체하지 않으며 Docker가 없으면 테스트가 실패합니다. 컨테이너와 테스트용 DB는 종료 시 정리됩니다.
 
-`RoomServiceTests`는 주입한 Clock과 동시 호출로 정원·중복 계정·재접속·퇴장·방장 승계·준비·채팅 제한과 게임 시작 조건·동시 입찰·단계 전환·중단을 검사합니다. `AuctionGameTests`는 입찰 검사 순서, 마감 연장, 낙찰·공개 정산, 동점 순위, 이탈 처리를 고정 난수로 검사합니다. WebSocket 통합 테스트는 실제 서버 연결과 인증·Origin·서버 방송, 게임 시작·입찰 방송과 숨은 가치 비노출을 검증합니다.
+`RoomServiceTests`는 주입한 Clock·가짜 `GameRecords`와 동시 호출로 정원·중복 계정·재접속·퇴장·방장 승계·준비·채팅 제한과 게임 시작 조건·시작 기록 실패 복원·시작 중 차단·동시 입찰·단계 전환·중단, 끝나는 경로마다 정산을 한 번만 넘기는지 검사합니다. `AuctionGameTests`는 입찰 검사 순서, 마감 연장, 낙찰·공개 정산, 동점 순위, 이탈 처리, 정산 결과 생성을 고정 난수로 검사합니다. `GameRecordServiceTests`는 실제 PostgreSQL에서 원장 합계와 잔액 일치, 재정산·동시 정산 시 1회 지급, 실패 시 전체 롤백, 기동 정리를 검사합니다. WebSocket 통합 테스트는 실제 서버 연결과 인증·Origin·서버 방송, 게임 시작·입찰 방송과 숨은 가치 비노출, 짧은 규칙으로 한 판을 끝낸 뒤 지급 완료와 본인 전용 `WALLET`을 검증합니다.
 
 ## 현재 범위
 
-이메일 가입·로그인·토큰 갱신·로그아웃·현재 사용자 조회를 제공합니다. 이메일 소유 확인, 비밀번호 재설정, 프로필 변경·탈퇴는 아직 구현하지 않았습니다. 방 관리·준비·채팅과 WebSocket 재접속은 구현했습니다. 온라인 경매(시작·입찰·정산·순위)는 메모리에서 진행합니다. 장난 아이템, 캐시 보상 저장, 게임 결과 저장은 미구현입니다. 영구 캐시·인벤토리나 가입 보상을 지급하지 않습니다.
+이메일 가입·로그인·토큰 갱신·로그아웃·현재 사용자 조회를 제공합니다. 이메일 소유 확인, 비밀번호 재설정, 프로필 변경·탈퇴는 아직 구현하지 않았습니다. 방 관리·준비·채팅과 WebSocket 재접속은 구현했습니다. 온라인 경매(시작·입찰·정산·순위)는 메모리에서 진행하고, 게임 기록과 순위 보상 캐시는 PostgreSQL에 저장합니다. 상점·인벤토리·장난 아이템, 원장·지난 게임 조회 API는 미구현입니다. 가입 보상은 지급하지 않습니다.
 
 인증 테스트는 임시 PostgreSQL과 실제 HTTP를 사용합니다. 가입 검증·중복·비밀번호 해시, 현재 사용자 조회, CSRF 거절, 토큰 갱신과 refresh 재사용 거절, 로그아웃 후 refresh 폐기를 검증 대상으로 둡니다. 별도로 복사한 access JWT의 남은 유효기간도 세션 폐기와 혼동하지 않도록 구분합니다.
