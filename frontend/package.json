@@ -23,7 +23,8 @@
     "qa:animals": "node scripts/qa/animal-room-qa.mjs",
     "qa:performance": "node scripts/qa/performance-qa.mjs",
     "assets:prepare": "node scripts/assets/prepare-animal-room.mjs",
-    "assets:portraits": "node scripts/assets/render-lobby-models.mjs"
+    "assets:portraits": "node scripts/assets/render-lobby-models.mjs",
+    "qa:rooms": "node scripts/qa/rooms-qa.mjs"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-kr": "^5.3.0",

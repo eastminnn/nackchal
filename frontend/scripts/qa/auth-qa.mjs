@@ -83,7 +83,8 @@ try {
     await verifyJwtRecovery(context, page);
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
     await expect(page.locator('.character-name strong')).toHaveText('작은곰');
-    await expect(page.getByRole('button', { name: '참가자를 기다리는 중' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
+    await expect(page.locator('.hud-round')).toHaveText('1 / 4명');
     await page.getByLabel('채팅 메시지').fill('로그인한 내 이름');
     await page.getByRole('button', { name: '채팅 보내기' }).click();
     await expect(page.locator('.character-speech')).toHaveText('로그인한 내 이름');
@@ -104,7 +105,7 @@ try {
     await page.getByLabel('이메일', { exact: true }).fill(email);
     await page.getByLabel('비밀번호', { exact: true }).fill(testPassword);
     await page.getByRole('button', { name: '로그인', exact: true }).click();
-    await expect(page.locator('.room-row')).toHaveCount(0);
+    await expect(page.locator('.room-row').filter({ hasText: '작은곰의 경매장' })).toHaveCount(0);
     await expect(page.locator('.profile-account-name')).toHaveText('작은곰');
     await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { code: 'UNAUTHENTICATED' } }));
     await page.route('**/api/auth/refresh', route => route.fulfill({ status: 401, json: { code: 'UNAUTHENTICATED' } }));

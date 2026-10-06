@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { authenticate } from './auth-fixture.mjs';
+import { authenticate, baseUrl } from './auth-fixture.mjs';
 
 await mkdir('.qa/animals', { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -22,7 +22,7 @@ try {
         if (!response.ok()) failures.push(response.status());
       }
     });
-    await page.goto('http://127.0.0.1:4185/');
+    await page.goto(baseUrl);
     await page.locator('.arrival-screen').waitFor();
     await page.evaluate(() => document.fonts.ready);
     await page.screenshot({ path: `.qa/animals/intro-${width}.png` });
@@ -45,8 +45,10 @@ try {
     const lobbyAxe = await new AxeBuilder({ page }).analyze();
     await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
-    await expect(page.getByRole('button', { name: '참가자를 기다리는 중' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
     assert.equal(await page.locator('.lobby-backdrop').count(), 0);
+    await page.locator('.immersive-game[data-models-ready="true"]').waitFor();
     await page.screenshot({ path: `.qa/animals/room-${width}.png` });
     await expect(page.locator('.character-label')).toHaveCount(1);
     await expect(page.locator('.character-name strong')).toHaveText('동민');
@@ -58,6 +60,7 @@ try {
     const violations = [...lobbyAxe.violations, ...gameAxe.violations].map(v => ({ id: v.id, nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })) }));
     report.push({ width, height, errors, failures, models: [...models], violations });
     console.log('ANIMALS', width, JSON.stringify(violations));
+    await page.getByRole('button', { name: '방 목록', exact: true }).click();
     await context.close();
   }
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -65,18 +68,25 @@ try {
   let releaseModels;
   const modelsAllowed = new Promise(resolve => { releaseModels = resolve; });
   await page.route('**/*.glb', async route => { await modelsAllowed; await route.continue(); });
-  await page.goto('http://127.0.0.1:4185/');
+  await page.goto(baseUrl);
   await page.getByRole('button', { name: '건너뛰기', exact: true }).click();
   await expect(page.locator('.profile-account-name')).toHaveText('빠른입장');
   await page.getByRole('button', { name: '방 만들기', exact: true }).click();
-  assert.equal(await page.getByRole('button', { name: '모델 불러오는 중…' }).isDisabled(), true);
+  await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
   releaseModels();
-  await expect(page.getByRole('button', { name: '참가자를 기다리는 중' })).toBeDisabled();
+  await page.locator('.immersive-game[data-models-ready="true"]').waitFor();
+  await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.reload();
   await page.locator('.arrival-screen').waitFor({ state: 'hidden' });
+  await page.locator('.immersive-game[data-models-ready="true"]').waitFor();
+  await expect(page.locator('.character-name strong')).toHaveText('빠른입장');
+  await expect(page.locator('.hud-round')).toHaveText('1 / 4명');
+  await page.getByRole('button', { name: '준비하기', exact: true }).waitFor();
+  await page.getByRole('button', { name: '방 목록', exact: true }).click();
   await page.locator('.lobby-backdrop[data-ready="true"][data-moving="false"]').waitFor();
-  await expect(page.locator('.profile-account-name')).toHaveText('빠른입장');
   console.log('PASS skip intro, enter before models arrive, reduced-motion startup');
   await page.close();
 } finally {
