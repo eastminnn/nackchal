@@ -56,6 +56,8 @@ class AuthIntegrationTests {
             assertThat(stored.get("password_hash")).isNotEqualTo(PASSWORD);
             assertThat(response.body()).doesNotContain(PASSWORD, "passwordHash");
             assertThat(browser.get("/api/auth/me").statusCode()).isEqualTo(401);
+            assertThat(jdbc.queryForObject("SELECT w.balance FROM wallets w JOIN email_credentials c "
+                    + "ON c.user_id = w.user_id WHERE c.email = ?", Long.class, input.get("email"))).isZero();
         }
     }
 
@@ -217,6 +219,7 @@ class AuthIntegrationTests {
             var id = jdbc.queryForObject("SELECT user_id FROM email_credentials WHERE email = ?",
                     UUID.class, input.get("email"));
             jdbc.update("DELETE FROM email_credentials WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM wallets WHERE user_id = ?", id);
             jdbc.update("DELETE FROM users WHERE id = ?", id);
 
             AuthClient.assertError(browser.get("/api/auth/me"), 401, "UNAUTHORIZED");

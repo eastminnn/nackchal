@@ -9,6 +9,7 @@ import com.nackchal.domain.auth.dto.request.LoginRequest;
 import com.nackchal.domain.auth.dto.request.RegistrationRequest;
 import com.nackchal.domain.auth.entity.EmailCredential;
 import com.nackchal.domain.auth.repository.EmailCredentialRepository;
+import com.nackchal.domain.wallet.service.WalletService;
 import java.util.UUID;
 import java.util.Optional;
 import org.hibernate.exception.ConstraintViolationException;
@@ -28,23 +29,26 @@ public class AuthService {
     private final EmailCredentialRepository emailCredentialRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthTokenService authTokenService;
+    private final WalletService walletService;
     private final String dummyPasswordHash;
 
     public AuthService(
             UserRepository userRepository,
             EmailCredentialRepository emailCredentialRepository,
             PasswordEncoder passwordEncoder,
-            AuthTokenService authTokenService
+            AuthTokenService authTokenService,
+            WalletService walletService
     ) {
         this.userRepository = userRepository;
         this.emailCredentialRepository = emailCredentialRepository;
         this.passwordEncoder = passwordEncoder;
         this.authTokenService = authTokenService;
+        this.walletService = walletService;
         this.dummyPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
     }
 
     /**
-     * 계정과 이메일 인증 정보를 함께 저장한다. 가입 후 로그인은 별도로 진행한다.
+     * 계정·이메일 인증 정보·빈 지갑을 함께 저장한다. 가입 후 로그인은 별도로 진행한다.
      * @throws CustomException EMAIL_UNAVAILABLE
      */
     @Transactional
@@ -56,6 +60,7 @@ public class AuthService {
         User user = userRepository.saveAndFlush(new User(request.nickname()));
         String passwordHash = passwordEncoder.encode(request.password());
         saveEmailCredential(user.getId(), request.email(), passwordHash);
+        walletService.create(user.getId());
     }
 
     /**

@@ -7,6 +7,7 @@ import com.nackchal.domain.user.repository.UserRepository;
 import com.nackchal.domain.auth.dto.request.RegistrationRequest;
 import com.nackchal.domain.auth.dto.request.LoginRequest;
 import com.nackchal.domain.auth.repository.EmailCredentialRepository;
+import com.nackchal.domain.wallet.service.WalletService;
 import java.sql.SQLException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ class AuthServiceTests {
         var passwords = mock(PasswordEncoder.class);
         var failure = new DataAccessResourceFailureException("private-database-diagnostic");
         when(credentials.findByEmail("bear@example.test")).thenThrow(failure);
-        var service = new AuthService(users, credentials, passwords, mock(AuthTokenService.class));
+        var service = new AuthService(users, credentials, passwords, mock(AuthTokenService.class), mock(WalletService.class));
 
         assertThatThrownBy(() -> service.login(new LoginRequest("bear@example.test", "test-password")))
                 .isSameAs(failure);
@@ -49,7 +50,7 @@ class AuthServiceTests {
         when(users.saveAndFlush(any())).thenReturn(user);
         when(passwords.encode(any())).thenReturn("hash");
         when(credentials.saveAndFlush(any())).thenThrow(failure);
-        var service = new AuthService(users, credentials, passwords, mock(AuthTokenService.class));
+        var service = new AuthService(users, credentials, passwords, mock(AuthTokenService.class), mock(WalletService.class));
 
         if (emailConflict) {
             assertThatThrownBy(() -> service.register(request)).isInstanceOfSatisfying(CustomException.class,
