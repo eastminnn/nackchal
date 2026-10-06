@@ -2,12 +2,14 @@ package com.nackchal.domain.auth.controller;
 
 import com.nackchal.domain.user.dto.response.UserResponse;
 import com.nackchal.common.security.service.AuthCookieService;
+import com.nackchal.common.security.event.AccessTokenRenewedEvent;
 import com.nackchal.common.security.event.UserLoggedOutEvent;
 import com.nackchal.domain.auth.dto.request.LoginRequest;
 import com.nackchal.domain.auth.dto.request.RegistrationRequest;
 import com.nackchal.domain.auth.dto.response.CsrfResponse;
 import com.nackchal.domain.auth.service.AuthService;
 import com.nackchal.domain.auth.service.AuthTokenService;
+import com.nackchal.domain.auth.service.AuthTokens;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.security.Principal;
@@ -67,7 +69,7 @@ public class AuthController {
     @PostMapping("/login")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
-        authCookieService.write(response, authService.login(request));
+        issue(response, authService.login(request));
     }
 
     @PostMapping("/refresh")
@@ -76,7 +78,7 @@ public class AuthController {
             @CookieValue(name = AuthCookieService.REFRESH_COOKIE, required = false) String token,
             HttpServletResponse response
     ) {
-        authCookieService.write(response, authTokenService.refresh(token));
+        issue(response, authTokenService.refresh(token));
     }
 
     @PostMapping("/logout")
@@ -90,5 +92,11 @@ public class AuthController {
                 .orElseGet(() -> principal == null ? null : UUID.fromString(principal.getName()));
         authCookieService.clear(response);
         if (userId != null) events.publishEvent(new UserLoggedOutEvent(userId));
+    }
+
+    private void issue(HttpServletResponse response, AuthTokens tokens) {
+        authCookieService.write(response, tokens);
+        // 열린 WebSocket은 연결 시점의 토큰 만료로 끊기므로, 새 토큰의 만료 시각까지 연결을 유지시킨다.
+        events.publishEvent(new AccessTokenRenewedEvent(tokens.userId(), tokens.accessExpiresAt()));
     }
 }

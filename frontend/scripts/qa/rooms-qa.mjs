@@ -71,8 +71,8 @@ try {
   await second.getByRole('button', { name: '준비하기', exact: true }).click();
   await expect(host.locator('.room-participants li').filter({ hasText: '경매사2' })).toContainText('준비 완료');
   await expect(second.getByRole('button', { name: '준비 취소' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(host.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
-  record('shared ready without fake auction', 'host sees second participant ready; no start button exists');
+  await expect(host.getByRole('button', { name: '경매 시작하기' })).toBeDisabled();
+  record('shared ready gates start', 'host sees second participant ready; start stays disabled until every guest is ready');
   await second.getByLabel('채팅 메시지').fill('모두 함께 보이는 채팅');
   await second.getByRole('button', { name: '채팅 보내기' }).click();
   for (const page of [host, second, third, fourth]) {

@@ -164,7 +164,7 @@ export function Lobby({
           </div>
           <p className="directory-note">
             최대 4명이 함께 준비하고 채팅할 수 있어요.
-            <span>경매 진행 기능은 준비 중</span>
+            <span>2명부터 경매를 시작할 수 있어요</span>
           </p>
         </section>
       </div>

@@ -1,6 +1,8 @@
 package com.nackchal.domain.room.websocket;
 
+import com.nackchal.common.security.event.AccessTokenRenewedEvent;
 import com.nackchal.common.security.event.UserLoggedOutEvent;
+import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
 import com.nackchal.domain.room.service.RoomService;
@@ -42,7 +44,7 @@ public class RoomConnections {
         this.clock = clock;
     }
 
-    /** 인증된 새 연결을 등록하고 WELCOME(참가 중인 방 코드 포함)과 방 목록을 보낸다. */
+    /** 인증된 새 연결을 등록하고 WELCOME(참가 중인 방 코드, 인증 만료 시각 포함)과 방 목록을 보낸다. */
     void open(WebSocketSession session) throws IOException {
         if (connections.size() >= 2000) {
             session.close(CloseStatus.SERVICE_OVERLOAD);
@@ -58,6 +60,7 @@ public class RoomConnections {
         welcome.put("type", "WELCOME");
         welcome.put("connectionId", session.getId());
         welcome.put("activeRoomId", roomService.roomId(user.id()).orElse(null));
+        welcome.put("authExpiresAt", expiresAt.toEpochMilli());
         send(connection, welcome);
         send(connection, roomList());
     }
@@ -99,7 +102,7 @@ public class RoomConnections {
             send(connection, listing);
             if (roomService.roomId(connection.actor).filter(event.roomId()::equals).isPresent()) {
                 roomService.find(event.roomId()).ifPresent(room ->
-                        send(connection, Map.of("type", "ROOM_STATE", "room", room)));
+                        send(connection, roomState(room)));
             }
         });
     }
@@ -110,6 +113,20 @@ public class RoomConnections {
         roomService.removeUser(event.userId());
         connections.values().stream().filter(connection -> connection.actor.userId().equals(event.userId()))
                 .forEach(connection -> close(connection, new CloseStatus(4403, "Logged out")));
+    }
+
+    /**
+     * 같은 사용자의 열린 연결이 새 액세스 토큰의 만료 시각까지 유지되게 하고 AUTH_RENEWED로 알린다.
+     * 클라이언트는 이 시각을 보고 다음 갱신을 예약한다. 만료 시각을 앞당기지는 않는다.
+     */
+    @EventListener
+    public void accessTokenRenewed(AccessTokenRenewedEvent event) {
+        connections.values().stream().filter(connection -> connection.actor.userId().equals(event.userId()))
+                .filter(connection -> !event.expiresAt().isBefore(connection.expiresAt))
+                .forEach(connection -> {
+                    connection.expiresAt = event.expiresAt();
+                    send(connection, Map.of("type", "AUTH_RENEWED", "expiresAt", event.expiresAt().toEpochMilli()));
+                });
     }
 
     /** 1초마다 인증 만료(4401)·응답 없는 연결(35초)을 닫고 재접속 유예가 끝난 자리를 정리한다. */
@@ -124,6 +141,11 @@ public class RoomConnections {
             }
         });
         roomService.expireDisconnected();
+    }
+
+    /** 방 스냅샷 이벤트. serverTime으로 클라이언트가 시계 차이를 보정해 단계 마감 시각을 표시한다. */
+    Map<String, Object> roomState(RoomResponse room) {
+        return Map.of("type", "ROOM_STATE", "serverTime", clock.instant().toEpochMilli(), "room", room);
     }
 
     /** 증가하는 version을 붙인 방 목록 이벤트. 클라이언트는 오래된 목록을 무시한다. */

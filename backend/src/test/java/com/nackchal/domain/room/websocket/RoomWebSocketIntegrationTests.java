@@ -207,6 +207,71 @@ class RoomWebSocketIntegrationTests {
     }
 
     @Test
+    void hostStartsGameAndBidsAreBroadcastWithoutHiddenValues() throws Exception {
+        try (var host = account("방장"); var guest = account("참가자")) {
+            var first = host.connect();
+            var second = guest.connect();
+            String roomId = create(first);
+            join(second, roomId);
+            second.reject("START_GAME", Map.of(), 403, "GAME_NOT_HOST");
+            second.accept("SET_READY", Map.of("ready", true));
+            first.accept("START_GAME", Map.of());
+
+            var started = second.await(node -> type(node, "ROOM_STATE")
+                    && node.path("room").path("game").path("status").isString()
+                    && node.path("room").path("game").path("status").stringValue().equals("AUCTION"));
+            assertThat(started.path("serverTime").longValue()).isPositive();
+            var game = started.path("room").path("game");
+            String gameId = game.path("gameId").stringValue();
+            assertThat(game.path("round").intValue()).isEqualTo(1);
+            assertThat(game.path("phaseEndsAt").longValue()).isGreaterThan(started.path("serverTime").longValue());
+            assertThat(game.path("reveal").isNull()).isTrue();
+            assertThat(game.path("lot").has("value")).isFalse();
+            assertThat(game.path("players")).hasSize(2);
+
+            second.accept("PLACE_BID", Map.of("gameId", gameId, "round", 1, "expectedBidVersion", 0,
+                    "amount", 12, "userId", host.userId));
+            var bid = first.state(roomId, room -> room.path("game").path("auction").path("bidVersion").isNumber()
+                    && room.path("game").path("auction").path("bidVersion").longValue() == 1);
+            assertThat(bid.path("game").path("auction").path("price").intValue()).isEqualTo(12);
+            assertThat(bid.path("game").path("auction").path("leaderUserId").stringValue()).isEqualTo(guest.userId);
+
+            String requestId = first.send("PLACE_BID", Map.of("gameId", gameId, "round", 1,
+                    "expectedBidVersion", 0, "amount", 20));
+            var stale = first.await(node -> type(node, "ERROR") && requestId.equals(node.path("requestId").stringValue()));
+            assertThat(stale.path("error").path("code").stringValue()).isEqualTo("BID_STALE");
+            assertThat(stale.path("auction").path("price").intValue()).isEqualTo(12);
+            assertThat(stale.path("auction").path("bidVersion").longValue()).isEqualTo(1);
+
+            var outsider = account("구경꾼");
+            try (outsider) {
+                outsider.connect().reject("JOIN_ROOM", Map.of("roomId", roomId), 409, "ROOM_IN_GAME");
+            }
+        }
+    }
+
+    @Test
+    void tokenRefreshExtendsOpenSocketsOfSameUserOnly() throws Exception {
+        try (var host = account("방장"); var other = account("손님")) {
+            var first = host.connect();
+            var second = host.connect();
+            var unrelated = other.connect();
+            long connectedUntil = first.welcome.path("authExpiresAt").longValue();
+            assertThat(connectedUntil).isGreaterThan(System.currentTimeMillis());
+
+            Thread.sleep(1100);
+            assertThat(host.post("/api/auth/refresh", Map.of()).statusCode()).isEqualTo(204);
+            for (var socket : List.of(first, second)) {
+                var renewed = socket.await(node -> type(node, "AUTH_RENEWED"));
+                assertThat(renewed.path("expiresAt").longValue()).isGreaterThan(connectedUntil);
+            }
+            unrelated.barrier();
+            assertThat(unrelated.history).noneMatch(node -> type(node, "AUTH_RENEWED"));
+            first.barrier();
+        }
+    }
+
+    @Test
     void httpLogoutImmediatelyClosesSocketAndRemovesParticipant() throws Exception {
         try (var host = account("방장"); var guest = account("손님")) {
             var first = host.connect();

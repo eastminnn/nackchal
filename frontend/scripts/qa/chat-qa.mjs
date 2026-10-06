@@ -18,7 +18,7 @@ try {
     await page.locator('.arrival-screen').waitFor({ state: 'hidden' });
     await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
-    await page.getByRole('button', { name: '준비하기', exact: true }).waitFor();
+    await page.getByRole('button', { name: '경매 시작하기' }).waitFor();
     await expect(page.locator('.character-name')).toHaveCount(1);
     await expect(page.locator('.character-label').first()).toBeVisible();
     assert.deepEqual(await page.locator('.character-name strong').allTextContents(), ['동민']);
@@ -95,8 +95,8 @@ try {
     const violations = (await new AxeBuilder({ page }).analyze()).violations;
     assert.deepEqual(violations.map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) })), []);
     await page.waitForTimeout(60000);
-    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '경매 시작하기' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toHaveCount(0);
     await expect(page.locator('.character-name')).toHaveCount(1);
     await expect(log.locator('p')).toHaveCount(16);
     await expect(page.locator('.character-speech')).toHaveCount(0);

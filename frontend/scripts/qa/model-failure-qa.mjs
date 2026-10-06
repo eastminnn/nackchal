@@ -13,13 +13,13 @@ try {
   await expect(page.locator('.profile-account-name')).toHaveText('연결검증');
   await page.getByRole('button', { name: '방 만들기', exact: true }).click();
   await page.getByRole('button', { name: '모델 다시 불러오기' }).waitFor();
-  await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
-  await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '경매 시작하기' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '준비하기', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '.qa/models/model-failure.png', fullPage: true });
   await page.unroute('**/models/animals/plush-bear.glb');
   await page.getByRole('button', { name: '모델 다시 불러오기' }).click();
-  await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
-  await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '경매 시작하기' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '준비하기', exact: true })).toHaveCount(0);
   await expect(page.locator('.character-label')).toHaveCount(1);
   await page.locator('.immersive-game[data-models-ready="true"]').waitFor();
   assert.equal(await page.locator('.room-canvas canvas').count(), 1);

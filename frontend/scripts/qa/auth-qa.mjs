@@ -83,7 +83,7 @@ try {
     await verifyJwtRecovery(context, page);
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
     await expect(page.locator('.character-name strong')).toHaveText('작은곰');
-    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '경매 시작하기' })).toBeDisabled();
     await expect(page.locator('.hud-round')).toHaveText('1 / 4명');
     await page.getByLabel('채팅 메시지').fill('로그인한 내 이름');
     await page.getByRole('button', { name: '채팅 보내기' }).click();

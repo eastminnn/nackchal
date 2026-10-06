@@ -1,16 +1,18 @@
-export type ObjectKind =
-  | 'radio'
-  | 'camera'
-  | 'lamp'
-  | 'shoe'
-  | 'teapot'
-  | 'duck'
-  | 'clock'
-  | 'plant'
-  | 'controller'
-  | 'vase'
-  | 'tomato'
-  | 'can';
+export const OBJECT_KINDS = [
+  'radio',
+  'camera',
+  'lamp',
+  'shoe',
+  'teapot',
+  'duck',
+  'clock',
+  'plant',
+  'controller',
+  'vase',
+  'tomato',
+  'can',
+] as const;
+export type ObjectKind = (typeof OBJECT_KINDS)[number];
 
 export type ItemKind = 'tomato' | 'can';
 export type Grade = '일반' | '레어' | '에픽' | '전설';

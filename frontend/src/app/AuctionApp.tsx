@@ -55,7 +55,10 @@ export function AuctionApp({
   const [client] = useState(() => new RoomClient(user.id));
   const shared = useSyncExternalStore(client.subscribe, client.getSnapshot);
   useEffect(() => client.connect(), [client]);
-  const view = useMemo(() => waitingView(state, shared.room, user), [state, shared.room, user]);
+  const view = useMemo(
+    () => waitingView(state, shared.room, user, shared.clockOffset),
+    [state, shared.room, user, shared.clockOffset],
+  );
   const rooms = useMemo(() => shared.rooms.map(roomInfo), [shared.rooms]);
   const enterRoom = (next: RoomInfo) => {
     void client.command({ type: 'JOIN_ROOM', roomId: next.id });

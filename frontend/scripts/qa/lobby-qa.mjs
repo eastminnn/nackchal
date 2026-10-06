@@ -36,8 +36,8 @@ try {
     const violations = (await new AxeBuilder({ page }).analyze()).violations;
     await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
-    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '경매 시작하기' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '방 목록', exact: true }).click();
     await expect(peerRow).toContainText('1 / 4');
     await page.getByLabel('방 이름 검색').fill('없는방');
@@ -74,8 +74,8 @@ try {
     await page.getByRole('button', { name: '방 목록', exact: true }).click();
     await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기' }).click();
-    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '경매 시작하기' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '방 목록', exact: true }).click();
     await expect(peerRow).toContainText('1 / 4');
     await page.emulateMedia({ reducedMotion: 'reduce' });

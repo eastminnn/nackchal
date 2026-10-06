@@ -100,6 +100,19 @@ function refreshUser(): Promise<User | null> {
   return refreshing;
 }
 
+/** 액세스 토큰이 아직 유효해도 갱신한다. 열린 WebSocket의 인증 만료 전에 호출해 연결을 유지한다. */
+export function renewSession(): Promise<boolean> {
+  return request(() =>
+    withAuthLock(async () => {
+      const response = await api.post('/api/auth/refresh', {
+        headers: await csrfHeaders(),
+        throwHttpErrors: false,
+      });
+      return response.ok;
+    }),
+  );
+}
+
 export function getUser(): Promise<User | null> {
   return request(async () => (await readUser()) ?? refreshUser());
 }

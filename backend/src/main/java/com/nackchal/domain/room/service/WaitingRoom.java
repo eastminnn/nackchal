@@ -1,5 +1,6 @@
 package com.nackchal.domain.room.service;
 
+import com.nackchal.domain.auction.model.AuctionGame;
 import com.nackchal.domain.room.dto.response.RoomChatResponse;
 import com.nackchal.domain.room.dto.response.RoomMemberResponse;
 import com.nackchal.domain.room.dto.response.RoomResponse;
@@ -18,11 +19,18 @@ final class WaitingRoom {
     final List<RoomChatResponse> chats = new ArrayList<>();
     long version = 1;
     long chatSequence;
+    /** 가장 최근 게임. 끝난 게임도 다음 시작 전까지 결과 표시용으로 남긴다. */
+    AuctionGame game;
 
     WaitingRoom(String id, String name) { this.id = id; this.name = name; }
 
     boolean occupied(int seat) {
         return members.values().stream().anyMatch(member -> member.seat == seat);
+    }
+
+    /** 입장·준비를 막아야 하는 진행 중 게임이 있는지. */
+    boolean playing() {
+        return game != null && game.inProgress();
     }
 
     UUID host() {
@@ -33,7 +41,8 @@ final class WaitingRoom {
         return new RoomResponse(id, name, host(), RoomService.MAX_PLAYERS, version,
                 members.values().stream().map(member -> new RoomMemberResponse(member.actor.userId(),
                         member.actor.nickname(), member.actor.avatarCode(), member.seat, member.ready,
-                        member.disconnectedAt == null)).toList(), List.copyOf(chats));
+                        member.disconnectedAt == null)).toList(), List.copyOf(chats),
+                game == null ? null : game.snapshot());
     }
 
     static final class Member {
