@@ -1,5 +1,5 @@
 import { QuestionIcon, SpeakerHighIcon, SpeakerSlashIcon, StorefrontIcon } from '@phosphor-icons/react';
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AuthError, type User } from '../auth/api';
 import { BrandMark } from '../components/brand/BrandMark';
 import { Shop } from '../components/game/Shop';
@@ -8,9 +8,11 @@ import { Button, Cash } from '../components/ui/primitives';
 import type { RoomInfo } from '../data/rooms';
 import { LocalGameServer } from '../game/LocalGameServer';
 import { useSound } from '../hooks/useSound';
-import { Game } from '../pages/Game';
 import { Lobby } from '../pages/Lobby';
-import { Results } from '../pages/Results';
+import { WaitingRoom } from '../pages/WaitingRoom';
+import { ConnectionNotice } from '../rooms/ConnectionNotice';
+import { RoomClient } from '../rooms/RoomClient';
+import { roomInfo, waitingView } from '../rooms/view';
 
 const LobbyBackdrop = lazy(() => import('../scene/LobbyBackdrop'));
 
@@ -30,6 +32,7 @@ export function AuctionApp({
     setSessionError('');
     try {
       await onLogout();
+      client.clearRestore();
     } catch (error) {
       if (!(error instanceof AuthError)) throw error;
       setSessionError(error.message);
@@ -49,68 +52,47 @@ export function AuctionApp({
   const state = useSyncExternalStore(server.subscribe, server.getSnapshot);
   const [modal, setModal] = useState<'rules' | 'shop' | null>(null);
   const [sound, setSound] = useState(false);
-  const [rooms, setRooms] = useState<readonly RoomInfo[]>([]);
-  const [room, setRoom] = useState<RoomInfo | null>(null);
-  const enterRoom = (next: RoomInfo, nickname: string) => {
-    if (next.status !== 'waiting') return;
-    server.send({ type: 'JOIN_ROOM', payload: { nickname } });
-    if (!server.getSnapshot().error) {
-      const entered = { ...next, players: server.getSnapshot().players.length };
-      setRoom(entered);
-      setRooms((previous) => previous.map((item) => (item.id === next.id ? entered : item)));
-    }
+  const [client] = useState(() => new RoomClient(user.id));
+  const shared = useSyncExternalStore(client.subscribe, client.getSnapshot);
+  useEffect(() => client.connect(), [client]);
+  const view = useMemo(() => waitingView(state, shared.room, user), [state, shared.room, user]);
+  const rooms = useMemo(() => shared.rooms.map(roomInfo), [shared.rooms]);
+  const enterRoom = (next: RoomInfo) => {
+    void client.command({ type: 'JOIN_ROOM', roomId: next.id });
   };
-  const leaveRoom = () => {
-    server.send({ type: 'LEAVE_ROOM', payload: {} });
-    setRooms((previous) => previous.map((item) => (item.id === room?.id ? { ...item, players: 0 } : item)));
-    setRoom(null);
+  const createRoom = () => {
+    void client.command({ type: 'CREATE_ROOM' });
   };
-  const createRoom = (nickname: string) => {
-    const next: RoomInfo = {
-      id: String(101 + rooms.length),
-      name: `${nickname}의 경매장`,
-      subtitle: '내가 만든 작은 경매 모임',
-      players: 0,
-      capacity: 4,
-      status: 'waiting',
-      mood: 'lounge',
-    };
-    setRooms((previous) => [next, ...previous]);
-    enterRoom(next, nickname);
-  };
-  useEffect(() => server.connect(), [server]);
-  useSound(sound, state);
-  const inRoom = room !== null && state.phase !== 'results';
-  const content = (() => {
-    switch (state.phase) {
-      case 'lobby':
-        return room ? (
-          <Game key={room.id} state={state} server={server} room={room} onLeave={leaveRoom} />
-        ) : (
-          <Lobby
-            user={user}
-            state={state}
-            server={server}
-            rooms={rooms}
-            onEnter={enterRoom}
-            onCreate={createRoom}
-          />
-        );
-      case 'auction':
-      case 'sold':
-      case 'reveal':
-        return room ? (
-          <Game key={room.id} state={state} server={server} room={room} onLeave={leaveRoom} />
-        ) : null;
-      case 'results':
-        return <Results state={state} server={server} />;
-    }
-  })();
+  useSound(sound, view);
+  const room = shared.room;
+  const inRoom = room !== null;
+  const content = room ? (
+    <WaitingRoom
+      key={room.id}
+      room={room}
+      state={view}
+      client={client}
+      user={user}
+      status={shared.status}
+      pending={shared.pending}
+      error={shared.error}
+    />
+  ) : (
+    <Lobby
+      user={user}
+      state={view}
+      server={server}
+      rooms={rooms}
+      onEnter={enterRoom}
+      onCreate={createRoom}
+      disabled={shared.status !== 'connected' || shared.pending}
+    />
+  );
   return (
     <div className={!inRoom ? 'lobby-shell' : undefined}>
       {state.phase === 'lobby' && !room && (
         <Suspense fallback={null}>
-          <LobbyBackdrop state={state} />
+          <LobbyBackdrop state={view} />
         </Suspense>
       )}
       <a className="skip-link" href="#main-content">
@@ -128,11 +110,6 @@ export function AuctionApp({
             <BrandMark key={brandReplay} compact animated={!arriving} />
           </a>
           <nav aria-label="메인 메뉴">
-            {state.phase === 'results' && (
-              <Button variant="ghost" onClick={leaveRoom}>
-                방 목록
-              </Button>
-            )}
             <Button variant="ghost" aria-label="게임 방법" onClick={() => setModal('rules')}>
               <QuestionIcon size={20} />
               <span>게임 방법</span>
@@ -144,7 +121,7 @@ export function AuctionApp({
               disabled={state.phase !== 'lobby'}
             >
               <StorefrontIcon size={20} />
-              <span>장난 상점</span>
+              <span>장난 상점 · 미리보기</span>
             </Button>
             <span className="header-divider" />
             <Cash amount={state.cash} />
@@ -173,17 +150,20 @@ export function AuctionApp({
           {sessionError}
         </p>
       )}
-      <div id="main-content">{content}</div>
-      {!inRoom && state.phase === 'results' && (
-        <footer className="site-footer container">
-          <span className="footer-brand">
-            nackchal<span>.</span>
-          </span>
-          <p>좋은 물건보다, 좋은 한 판.</p>
-        </footer>
+      {!inRoom && (
+        <div className="container lobby-connection">
+          <ConnectionNotice status={shared.status} />
+          {shared.error && (
+            <p className="error" role="alert">
+              {shared.error}
+            </p>
+          )}
+        </div>
       )}
+      <div id="main-content">{content}</div>
       {modal === 'shop' && (
         <Modal title="장난 상점" onClose={() => setModal(null)}>
+          <p className="demo-note">이 상점과 캐시는 이 탭에서만 사용하는 미리보기예요.</p>
           <Shop state={state} server={server} />
           <p className="error" role="status">
             {state.error}
@@ -231,7 +211,8 @@ export function AuctionApp({
             </section>
           </div>
           <p className="demo-note">
-            지금은 방 화면과 채팅을 미리 볼 수 있어요. 사람들과 함께하는 온라인 플레이는 준비 중이에요.
+            최대 4명이 같은 대기실에 입장하고 준비 상태와 채팅을 나눌 수 있어요. 경매 진행과 보상은 아직 준비
+            중이에요.
           </p>
           <Button className="rules-close" onClick={() => setModal(null)}>
             좋아, 이해했어!

@@ -67,6 +67,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/register").anonymous()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
+                        .requestMatchers("/api/rooms", "/api/rooms/**").authenticated()
                         .anyRequest().denyAll())
                 .requestCache(cache -> cache.disable())
                 .formLogin(form -> form.disable())

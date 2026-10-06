@@ -30,6 +30,16 @@ public enum ErrorCode {
     // 회원가입
     EMAIL_UNAVAILABLE(HttpStatus.CONFLICT, "EMAIL_UNAVAILABLE", "이미 사용 중인 이메일이에요."),
 
+    // 방 참가와 연결
+    ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "이미 종료된 방이에요."),
+    ROOM_FULL(HttpStatus.CONFLICT, "ROOM_FULL", "방이 가득 찼어요. 최대 4명까지 참가할 수 있어요."),
+    ROOM_ALREADY_JOINED(HttpStatus.CONFLICT, "ROOM_ALREADY_JOINED", "참가 중인 방에서 나온 뒤 입장해 주세요."),
+    ROOM_CONNECTION_CONFLICT(HttpStatus.CONFLICT, "ROOM_CONNECTION_CONFLICT", "이미 다른 탭에서 참가 중이에요. 기존 탭에서 나간 뒤 입장해 주세요."),
+    ROOM_NOT_JOINED(HttpStatus.FORBIDDEN, "ROOM_NOT_JOINED", "참가 중인 방에서만 할 수 있어요."),
+    ROOM_SERVER_FULL(HttpStatus.SERVICE_UNAVAILABLE, "ROOM_SERVER_FULL", "지금은 방을 더 만들 수 없어요. 잠시 후 다시 시도해 주세요."),
+    INVALID_CHAT(HttpStatus.BAD_REQUEST, "INVALID_CHAT", "채팅은 1~100자로 입력해 주세요."),
+    CHAT_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "CHAT_RATE_LIMITED", "채팅은 1초에 한 번씩 보낼 수 있어요."),
+
     // 서버 오류
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "일시적인 오류가 발생했어요. 잠시 후 다시 시도해 주세요."),
     SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", "잠시 요청을 처리할 수 없어요. 다시 시도해 주세요.");

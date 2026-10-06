@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
+/** 리프레시 토큰 해시 조회와 만료 토큰 정리. */
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

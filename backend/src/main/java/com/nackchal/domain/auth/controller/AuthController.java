@@ -2,6 +2,7 @@ package com.nackchal.domain.auth.controller;
 
 import com.nackchal.domain.user.dto.response.UserResponse;
 import com.nackchal.common.security.service.AuthCookieService;
+import com.nackchal.common.security.event.UserLoggedOutEvent;
 import com.nackchal.domain.auth.dto.request.LoginRequest;
 import com.nackchal.domain.auth.dto.request.RegistrationRequest;
 import com.nackchal.domain.auth.dto.response.CsrfResponse;
@@ -12,6 +13,7 @@ import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.CookieValue;
@@ -31,15 +33,18 @@ public class AuthController {
     private final AuthService authService;
     private final AuthTokenService authTokenService;
     private final AuthCookieService authCookieService;
+    private final ApplicationEventPublisher events;
 
     public AuthController(
             AuthService authService,
             AuthTokenService authTokenService,
-            AuthCookieService authCookieService
+            AuthCookieService authCookieService,
+            ApplicationEventPublisher events
     ) {
         this.authService = authService;
         this.authTokenService = authTokenService;
         this.authCookieService = authCookieService;
+        this.events = events;
     }
 
     @GetMapping("/csrf")
@@ -78,9 +83,12 @@ public class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(
             @CookieValue(name = AuthCookieService.REFRESH_COOKIE, required = false) String token,
-            HttpServletResponse response
+            HttpServletResponse response,
+            Principal principal
     ) {
-        authTokenService.revoke(token);
+        UUID userId = authTokenService.revoke(token)
+                .orElseGet(() -> principal == null ? null : UUID.fromString(principal.getName()));
         authCookieService.clear(response);
+        if (userId != null) events.publishEvent(new UserLoggedOutEvent(userId));
     }
 }

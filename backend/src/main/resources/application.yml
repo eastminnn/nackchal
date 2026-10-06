@@ -21,6 +21,8 @@ spring:
     timeout-per-shutdown-phase: 20s
 
 app:
+  rooms:
+    allowed-origins: ${ROOM_ALLOWED_ORIGINS:http://127.0.0.1:18000,http://localhost:18000,http://127.0.0.1:4185,http://localhost:4185,http://localhost:5173,http://127.0.0.1:5173}
   auth:
     jwt-secret: ${JWT_SECRET:}
     issuer: nackchal

@@ -372,11 +372,15 @@
     display: none;
   }
 }
+@media (max-width: 900px) {
+  .lobby-shell .site-header nav .button span {
+    display: none;
+  }
+}
 @media (max-width: 700px) {
   .lobby-shell .site-header nav {
     gap: 0;
   }
-  .lobby-shell .site-header nav .button span,
   .lobby-shell .header-divider,
   .lobby-shell .site-header .cash {
     display: none;

@@ -30,6 +30,55 @@ export function ChatComposer({ server }: { readonly server: GameTransport }) {
     </form>
   );
 }
+export function OnlineChatComposer({
+  disabled,
+  onSend,
+}: {
+  readonly disabled: boolean;
+  readonly onSend: (body: string) => Promise<boolean>;
+}) {
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!body.trim() || sending || disabled) return;
+    setSending(true);
+    try {
+      if (await onSend(body)) setBody('');
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <form
+      className="chat-composer"
+      onSubmit={(event) => {
+        void submit(event);
+      }}
+    >
+      <ChatCircleDotsIcon size={20} aria-hidden="true" />
+      <input
+        aria-label="채팅 메시지"
+        value={body}
+        disabled={disabled || sending}
+        maxLength={100}
+        onChange={(event) => setBody(event.target.value)}
+        placeholder="친구들에게 한마디…"
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault();
+        }}
+      />
+      <Button
+        variant="icon"
+        type="submit"
+        disabled={disabled || sending || !body.trim()}
+        aria-label="채팅 보내기"
+      >
+        <PaperPlaneRightIcon size={22} />
+      </Button>
+    </form>
+  );
+}
 export function ChatLog({ messages }: { readonly messages: readonly Message[] }) {
   const log = useRef<HTMLDivElement>(null);
   const follow = useRef(true);

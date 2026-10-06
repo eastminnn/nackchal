@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,10 +63,13 @@ public class AuthTokenService {
         return createTokens(stored.getUserId(), stored.getExpiresAt());
     }
 
-    public void revoke(String token) {
+    public Optional<UUID> revoke(String token) {
         if (token != null && !token.isBlank() && token.length() <= 128) {
-            refreshTokenRepository.findByTokenHash(hash(token)).ifPresent(refreshTokenRepository::delete);
+            Optional<RefreshToken> stored = refreshTokenRepository.findByTokenHash(hash(token));
+            stored.ifPresent(refreshTokenRepository::delete);
+            return stored.map(RefreshToken::getUserId);
         }
+        return Optional.empty();
     }
 
     private AuthTokens createTokens(UUID userId, Instant expiresAt) {
