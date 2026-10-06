@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       # frontend/Dockerfile과 같은 pnpm 버전을 쓴다.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.19.0
       - uses: actions/setup-node@v5
