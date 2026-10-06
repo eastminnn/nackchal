@@ -79,3 +79,48 @@
 .room-participants li span {
   white-space: nowrap;
 }
+.hud-result {
+  top: 50%;
+  bottom: auto;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.hud-result h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: inherit;
+}
+.hud-result h2 svg {
+  color: var(--gold);
+}
+.hud-result ol {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.hud-result li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.hud-result li strong {
+  overflow-wrap: anywhere;
+}
+.hud-result li small {
+  color: var(--secondary);
+  white-space: nowrap;
+}
+.hud-result li.my-ranking strong {
+  color: var(--accent);
+}
+/* Money는 span이라 .hud-reveal span의 작은 보조 글씨 규칙을 받지 않게 한다. */
+.room-hud .hud-reveal strong .money {
+  color: inherit;
+  font-size: inherit;
+}
