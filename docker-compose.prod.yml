@@ -1,0 +1,23 @@
+# 운영 서버 전용 추가 설정. docker compose -f docker-compose.yml -f docker-compose.prod.yml 로 함께 사용한다.
+# 외부에는 Caddy의 80·443만 열고, 기존 서비스 포트는 서버 내부(127.0.0.1)에만 남는다.
+services:
+  caddy:
+    image: caddy:2.11-alpine
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?Set SITE_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+
+volumes:
+  caddy-data:
+  caddy-config:
