@@ -19,7 +19,9 @@ class AuctionGameTests {
     private final UUID a = UUID.randomUUID();
     private final UUID b = UUID.randomUUID();
     private final UUID c = UUID.randomUUID();
-    private final AuctionGame game = AuctionGame.start(List.of(a, b, c), START, new Random(42));
+    private final UUID gameId = UUID.randomUUID();
+    private final AuctionGame game = AuctionGame.start(gameId, List.of(a, b, c), START, AuctionRules.DEFAULT,
+            new Random(42));
 
     @Test
     void startsFirstRoundWithStartingBalancesAndNoHiddenValues() {
@@ -148,8 +150,8 @@ class AuctionGameTests {
     @Test
     void leavingLeaderKeepsBidButIsExcludedFromRanking() {
         game.bid(a, game.id(), 1, 0, 40, at(1_000));
-        assertThat(game.leave(a)).isTrue();
-        assertThat(game.leave(a)).isFalse();
+        assertThat(game.leave(a, at(1_500))).isTrue();
+        assertThat(game.leave(a, at(1_500))).isFalse();
         assertThat(code(() -> game.bid(a, game.id(), 1, 1, 50, at(2_000)))).isEqualTo(ErrorCode.GAME_NOT_FOUND);
         game.advance(at(20_000));
         GameResponse sold = game.snapshot();
@@ -161,15 +163,92 @@ class AuctionGameTests {
 
     @Test
     void abortsWithoutRankingWhenOnlyOnePlayerRemains() {
-        game.leave(a);
+        game.leave(a, at(1_500));
         assertThat(game.inProgress()).isTrue();
-        game.leave(b);
+        game.leave(b, at(1_500));
         GameResponse aborted = game.snapshot();
         assertThat(aborted.status()).isEqualTo("ABORTED");
         assertThat(aborted.phaseEndsAt()).isNull();
         assertThat(aborted.result().ranking()).isEmpty();
         assertThat(game.advance(at(60_000))).isFalse();
-        assertThat(game.leave(c)).isFalse();
+        assertThat(game.leave(c, at(1_500))).isFalse();
+    }
+
+    @Test
+    void usesGivenIdAndRules() {
+        var quick = AuctionGame.start(gameId, List.of(a, b), START,
+                AuctionRules.DEFAULT.withPhaseTimes(Duration.ofMillis(200), Duration.ofMillis(50),
+                        Duration.ofMillis(50)), new Random(1));
+        assertThat(quick.id()).isEqualTo(gameId);
+        assertThat(quick.snapshot().phaseEndsAt()).isEqualTo(at(200).toEpochMilli());
+        assertThat(quick.advance(at(300 * 10))).isTrue();
+        assertThat(quick.snapshot().status()).isEqualTo("FINISHED");
+    }
+
+    @Test
+    void inProgressGameHasNoSettlement() {
+        assertThat(game.takeSettlement()).isEmpty();
+        assertThat(game.snapshot().settlement()).isNull();
+    }
+
+    @Test
+    void finishedGameHandsOverSettlementOnce() {
+        game.bid(c, gameId, 1, 0, 30, at(1_000));
+        game.leave(b, at(5_000));
+        game.advance(at(28_000 * 10));
+        GameResponse finished = game.snapshot();
+
+        var settlement = game.takeSettlement().orElseThrow();
+        assertThat(game.takeSettlement()).as("한 판은 한 번만 넘긴다").isEmpty();
+        assertThat(game.snapshot().settlement()).isEqualTo("PENDING");
+        assertThat(settlement.gameId()).isEqualTo(gameId);
+        assertThat(settlement.outcome()).isEqualTo(GameSettlement.Outcome.FINISHED);
+        assertThat(settlement.endedAt()).isEqualTo(at(28_000 * 10));
+        assertThat(settlement.rounds()).hasSize(10);
+        var first = settlement.rounds().getFirst();
+        var history = finished.history().getFirst();
+        assertThat(first.round()).isEqualTo(1);
+        assertThat(first.winnerUserId()).isEqualTo(c);
+        assertThat(first.price()).isEqualTo(30);
+        assertThat(first.value()).isEqualTo(history.value());
+        assertThat(first.lotCode()).isEqualTo(history.lotKind());
+        assertThat(first.revealedGrade()).isEqualTo(Grade.valueOf(first.revealedGrade()).name());
+        assertThat(Grade.valueOf(first.revealedGrade()).label()).isEqualTo(history.grade());
+        assertThat(first.revealedAt()).isEqualTo(at(25_000));
+        assertThat(settlement.rounds().get(1).winnerUserId()).isNull();
+        assertThat(settlement.rounds().get(1).price()).isZero();
+
+        var leaver = settlement.participants().stream().filter(p -> p.userId().equals(b)).findFirst().orElseThrow();
+        assertThat(leaver.left()).isTrue();
+        assertThat(leaver.leftAt()).isEqualTo(at(5_000));
+        assertThat(leaver.rank()).isNull();
+        assertThat(leaver.reward()).isZero();
+        for (var ranked : finished.result().ranking()) {
+            var participant = settlement.participants().stream()
+                    .filter(p -> p.userId().equals(ranked.userId())).findFirst().orElseThrow();
+            assertThat(participant.rank()).isEqualTo(ranked.rank());
+            assertThat(participant.reward()).isEqualTo(ranked.reward());
+            assertThat(participant.finalBalance()).isEqualTo(ranked.balance());
+        }
+
+        game.completeSettlement(true);
+        assertThat(game.snapshot().settlement()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void abortedGameSettlesWithoutRewardsOrRounds() {
+        game.advance(at(28_000));
+        game.leave(a, at(30_000));
+        game.leave(b, at(31_000));
+        var settlement = game.takeSettlement().orElseThrow();
+        assertThat(settlement.outcome()).isEqualTo(GameSettlement.Outcome.ABORTED);
+        assertThat(settlement.endedAt()).isEqualTo(at(31_000));
+        assertThat(settlement.rounds()).isEmpty();
+        assertThat(settlement.participants()).extracting(GameSettlement.Participant::reward).containsOnly(0);
+        assertThat(settlement.participants()).filteredOn(p -> !p.left()).singleElement()
+                .satisfies(p -> assertThat(p.userId()).isEqualTo(c));
+        game.completeSettlement(false);
+        assertThat(game.snapshot().settlement()).isEqualTo("FAILED");
     }
 
     private static Instant at(long millis) {

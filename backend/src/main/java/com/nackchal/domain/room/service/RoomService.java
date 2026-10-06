@@ -3,6 +3,7 @@ package com.nackchal.domain.room.service;
 import com.nackchal.common.exception.CustomException;
 import com.nackchal.common.exception.error.ErrorCode;
 import com.nackchal.domain.auction.model.AuctionGame;
+import com.nackchal.domain.auction.model.AuctionRules;
 import com.nackchal.domain.room.dto.response.RoomChatResponse;
 import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.dto.response.RoomSummaryResponse;
@@ -213,7 +214,8 @@ public class RoomService {
                     .filter(entry -> !entry.getKey().equals(actor.userId()))
                     .allMatch(entry -> entry.getValue().ready);
             if (!othersReady) throw error(ErrorCode.GAME_PLAYERS_NOT_READY);
-            room.game = AuctionGame.start(room.members.keySet(), clock.instant(), random);
+            room.game = AuctionGame.start(UUID.randomUUID(), room.members.keySet(), clock.instant(),
+                    AuctionRules.DEFAULT, random);
             return true;
         });
     }
@@ -327,7 +329,7 @@ public class RoomService {
      * 게임 중이면 이탈로 기록하고, 그 때문에 게임이 중단되면 남은 참가자의 준비를 해제한다.
      */
     private boolean remove(WaitingRoom room, UUID userId) {
-        if (room.playing() && room.game.leave(userId) && !room.game.inProgress()) resetReady(room);
+        if (room.playing() && room.game.leave(userId, clock.instant()) && !room.game.inProgress()) resetReady(room);
         room.members.remove(userId);
         memberships.remove(userId, room);
         if (room.members.isEmpty() && rooms.remove(room.id, room)) roomCount.decrementAndGet();

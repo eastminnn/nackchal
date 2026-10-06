@@ -23,6 +23,7 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.random.RandomGenerator;
 
@@ -32,24 +33,21 @@ import java.util.random.RandomGenerator;
  */
 public final class AuctionGame {
 
-    public static final int TOTAL_ROUNDS = 10;
-    static final int START_BALANCE = 100;
-    static final int START_PRICE = 5;
-    static final Duration AUCTION_TIME = Duration.ofSeconds(20);
-    static final Duration SOLD_TIME = Duration.ofSeconds(5);
-    static final Duration REVEAL_TIME = Duration.ofSeconds(3);
-    static final Duration EXTEND_WINDOW = Duration.ofSeconds(3);
-    static final Duration MAX_EXTENSION = Duration.ofSeconds(15);
     private static final int BID_LOG_SIZE = 10;
 
     /** 단계 순서: AUCTION → SOLD → REVEAL → (다음 라운드 AUCTION | FINISHED). 참가자가 부족하면 ABORTED. */
     public enum Status { AUCTION, SOLD, REVEAL, FINISHED, ABORTED }
 
-    private final UUID id = UUID.randomUUID();
+    /** 끝난 판의 DB 정산 상태. 진행 중에는 null이다. */
+    public enum Settlement { PENDING, COMPLETED, FAILED }
+
+    private final UUID id;
+    private final AuctionRules rules;
     private final RandomGenerator random;
     private final List<Item> items;
     private final Map<UUID, Player> players = new LinkedHashMap<>();
     private final List<RoundResultResponse> history = new ArrayList<>();
+    private final List<GameSettlement.Round> rounds = new ArrayList<>();
     private final Deque<BidResponse> bids = new ArrayDeque<>();
     private Status status;
     private int round;
@@ -62,16 +60,24 @@ public final class AuctionGame {
     private Duration extended;
     private RevealResponse reveal;
     private List<RankingResponse> ranking;
+    private Instant endedAt;
+    private Settlement settlement;
 
-    private AuctionGame(Collection<UUID> userIds, RandomGenerator random) {
+    private AuctionGame(UUID id, Collection<UUID> userIds, AuctionRules rules, RandomGenerator random) {
+        this.id = id;
+        this.rules = rules;
         this.random = random;
         this.items = LotCatalog.shuffled(random);
-        userIds.forEach(userId -> players.put(userId, new Player(START_BALANCE)));
+        userIds.forEach(userId -> players.put(userId, new Player(rules.startBalance())));
     }
 
-    /** 참가자 전원에게 시작 잔액을 주고 1라운드 경매를 연다. 시작 조건은 호출하는 쪽에서 확인한다. */
-    public static AuctionGame start(Collection<UUID> userIds, Instant now, RandomGenerator random) {
-        AuctionGame game = new AuctionGame(userIds, random);
+    /**
+     * 참가자 전원에게 시작 잔액을 주고 1라운드 경매를 연다. id는 시작 기록에 먼저 저장한 게임 ID다.
+     * 시작 조건은 호출하는 쪽에서 확인한다.
+     */
+    public static AuctionGame start(UUID id, Collection<UUID> userIds, Instant now, AuctionRules rules,
+                                    RandomGenerator random) {
+        AuctionGame game = new AuctionGame(id, userIds, rules, random);
         game.beginRound(now);
         return game;
     }
@@ -97,7 +103,7 @@ public final class AuctionGame {
         if (status != Status.AUCTION || round != this.round || !now.isBefore(phaseEndsAt)) reject(ErrorCode.BID_CLOSED);
         if (expectedBidVersion != bidVersion) reject(ErrorCode.BID_STALE);
         if (userId.equals(leader)) reject(ErrorCode.BID_ALREADY_LEADING);
-        if (amount < (leader == null ? START_PRICE : price + 1)) reject(ErrorCode.BID_TOO_LOW);
+        if (amount < (leader == null ? rules.startPrice() : price + 1)) reject(ErrorCode.BID_TOO_LOW);
         if (amount > player.balance) reject(ErrorCode.BID_INSUFFICIENT_BALANCE);
 
         price = amount;
@@ -105,10 +111,10 @@ public final class AuctionGame {
         bidVersion++;
         bids.addFirst(new BidResponse(userId, amount, now.toEpochMilli()));
         if (bids.size() > BID_LOG_SIZE) bids.removeLast();
-        if (!Duration.between(now, phaseEndsAt).minus(EXTEND_WINDOW).isPositive()) {
+        if (!Duration.between(now, phaseEndsAt).minus(rules.extendWindow()).isPositive()) {
             // 남은 시간을 3초로 되돌리되, 라운드당 연장 합계는 15초를 넘지 않는다.
-            Duration added = Duration.between(phaseEndsAt, now.plus(EXTEND_WINDOW));
-            Duration remaining = MAX_EXTENSION.minus(extended);
+            Duration added = Duration.between(phaseEndsAt, now.plus(rules.extendWindow()));
+            Duration remaining = rules.maxExtension().minus(extended);
             if (added.compareTo(remaining) > 0) added = remaining;
             phaseEndsAt = phaseEndsAt.plus(added);
             extended = extended.plus(added);
@@ -127,7 +133,7 @@ public final class AuctionGame {
                 case AUCTION -> sell();
                 case SOLD -> revealValue();
                 case REVEAL -> {
-                    if (round < TOTAL_ROUNDS) beginRound(phaseEndsAt);
+                    if (round < rules.totalRounds()) beginRound(phaseEndsAt);
                     else finish();
                 }
                 default -> throw new IllegalStateException("Unexpected status " + status);
@@ -142,20 +148,47 @@ public final class AuctionGame {
      * 남은 참가자가 1명 이하가 되면 게임을 중단한다.
      * @return 상태가 바뀌었는지
      */
-    public boolean leave(UUID userId) {
+    public boolean leave(UUID userId, Instant now) {
         Player player = players.get(userId);
         if (!inProgress() || player == null || player.left) return false;
         player.left = true;
+        player.leftAt = now;
         if (players.values().stream().filter(other -> !other.left).count() <= 1) {
             status = Status.ABORTED;
             phaseEndsAt = null;
+            endedAt = now;
             ranking = List.of();
         }
         return true;
     }
 
+    /**
+     * 끝난 판의 정산 결과를 한 번만 꺼내고 정산 상태를 PENDING으로 바꾼다.
+     * 진행 중이거나 이미 꺼낸 판이면 비어 있다.
+     */
+    public Optional<GameSettlement> takeSettlement() {
+        if (inProgress() || settlement != null) return Optional.empty();
+        settlement = Settlement.PENDING;
+        boolean finished = status == Status.FINISHED;
+        Map<UUID, RankingResponse> ranks = new LinkedHashMap<>();
+        ranking.forEach(entry -> ranks.put(entry.userId(), entry));
+        List<GameSettlement.Participant> participants = players.entrySet().stream().map(entry -> {
+            Player player = entry.getValue();
+            RankingResponse rank = ranks.get(entry.getKey());
+            return new GameSettlement.Participant(entry.getKey(), player.balance, player.left, player.leftAt,
+                    rank == null ? null : rank.rank(), rank == null ? 0 : rank.reward());
+        }).toList();
+        return Optional.of(new GameSettlement(id, finished ? GameSettlement.Outcome.FINISHED
+                : GameSettlement.Outcome.ABORTED, endedAt, participants, finished ? rounds : List.of()));
+    }
+
+    /** DB 정산 결과를 반영한다. takeSettlement로 꺼낸 판에만 의미가 있다. */
+    public void completeSettlement(boolean success) {
+        if (settlement == Settlement.PENDING) settlement = success ? Settlement.COMPLETED : Settlement.FAILED;
+    }
+
     public GameResponse snapshot() {
-        return new GameResponse(id, status.name(), round, TOTAL_ROUNDS,
+        return new GameResponse(id, status.name(), round, rules.totalRounds(),
                 phaseEndsAt == null ? null : phaseEndsAt.toEpochMilli(),
                 new LotResponse(lot.kind(), lot.name(), lot.description(), lot.hint().label()),
                 auctionState(),
@@ -164,7 +197,8 @@ public final class AuctionGame {
                         .toList(),
                 status == Status.REVEAL ? reveal : null,
                 List.copyOf(history),
-                ranking == null ? null : new GameResultResponse(ranking));
+                ranking == null ? null : new GameResultResponse(ranking),
+                settlement == null ? null : settlement.name());
     }
 
     private void beginRound(Instant startsAt) {
@@ -173,8 +207,8 @@ public final class AuctionGame {
         lot = draw.lot();
         secret = draw.secret();
         status = Status.AUCTION;
-        phaseEndsAt = startsAt.plus(AUCTION_TIME);
-        price = START_PRICE;
+        phaseEndsAt = startsAt.plus(rules.auctionTime());
+        price = rules.startPrice();
         leader = null;
         bidVersion = 0;
         extended = Duration.ZERO;
@@ -185,7 +219,7 @@ public final class AuctionGame {
     private void sell() {
         if (leader != null) players.get(leader).balance -= price;
         status = Status.SOLD;
-        phaseEndsAt = phaseEndsAt.plus(SOLD_TIME);
+        phaseEndsAt = phaseEndsAt.plus(rules.soldTime());
     }
 
     private void revealValue() {
@@ -195,8 +229,11 @@ public final class AuctionGame {
                 leader == null ? 0 : secret.value() - paid);
         history.add(new RoundResultResponse(round, lot.kind(), lot.name(), leader, paid,
                 secret.grade().label(), secret.value()));
+        // 공개 시각은 낙찰 단계의 마감 시각이다. 타이머가 늦게 돌아도 기록 시각은 일정과 같다.
+        rounds.add(new GameSettlement.Round(round, lot.kind(), lot.name(), lot.hint().name(), secret.grade().name(),
+                secret.value(), leader, paid, phaseEndsAt));
         status = Status.REVEAL;
-        phaseEndsAt = phaseEndsAt.plus(REVEAL_TIME);
+        phaseEndsAt = phaseEndsAt.plus(rules.revealTime());
     }
 
     private void finish() {
@@ -211,6 +248,7 @@ public final class AuctionGame {
             return new RankingResponse(entry.getKey(), rank, balance, rank == 1 ? 10 : rank == 2 ? 5 : 2);
         }).toList();
         status = Status.FINISHED;
+        endedAt = phaseEndsAt;
         phaseEndsAt = null;
         reveal = null;
     }
@@ -226,6 +264,7 @@ public final class AuctionGame {
     private static final class Player {
         int balance;
         boolean left;
+        Instant leftAt;
 
         Player(int balance) {
             this.balance = balance;
