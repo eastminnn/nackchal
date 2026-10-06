@@ -1,0 +1,6 @@
+# 운영 HTTPS 입구. Let's Encrypt 인증서를 자동으로 받고 갱신하며, 모든 요청을 프론트 Nginx로 넘긴다.
+# WebSocket 업그레이드와 X-Forwarded-For·X-Forwarded-Proto는 Caddy가 기본으로 전달한다.
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
