@@ -1,4 +1,4 @@
-import { AuthError, getUser } from '../auth/api';
+import { AuthError, getUser, renewSession } from '../auth/api';
 import { type ConnectionStatus, type ServerMessage, serverMessageSchema } from './protocol';
 
 interface Handlers {
@@ -12,6 +12,7 @@ export class RoomSocket {
   private socket: WebSocket | null = null;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private heartbeat: ReturnType<typeof setInterval> | undefined;
+  private renewal: ReturnType<typeof setTimeout> | undefined;
   private active = false;
   private generation = 0;
   private attempts = 0;
@@ -34,6 +35,7 @@ export class RoomSocket {
     ++this.generation;
     clearTimeout(this.retry);
     clearInterval(this.heartbeat);
+    clearTimeout(this.renewal);
     this.socket?.close();
     this.socket = null;
     this.handlers.onStatus('stopped');
@@ -54,6 +56,19 @@ export class RoomSocket {
     const delay = Math.min(1000 * 2 ** this.attempts++, 10000);
     this.retry = setTimeout(() => {
       void this.open();
+    }, delay);
+  }
+  /**
+   * 서버는 연결의 인증 만료 시각에 4401로 연결을 닫는다. 만료 1분 전에 토큰을 갱신하면 서버가
+   * AUTH_RENEWED로 새 만료 시각을 알려 주고, 그 시각으로 다음 갱신을 다시 예약한다.
+   * 시계가 어긋나도 갱신이 연달아 일어나지 않도록 최소 30초 간격을 둔다.
+   */
+  private scheduleRenewal(expiresAt: number) {
+    clearTimeout(this.renewal);
+    const delay = Math.max(expiresAt - Date.now() - 60000, 30000);
+    this.renewal = setTimeout(() => {
+      // 실패하면 서버가 4401로 닫고 기존 재연결 흐름이 인증을 다시 확인한다.
+      renewSession().catch(() => undefined);
     }, delay);
   }
   private async open() {
@@ -96,6 +111,8 @@ export class RoomSocket {
               this.send(JSON.stringify({ type: 'PING', requestId: crypto.randomUUID() }));
             }, 10000);
           }
+          if (message.type === 'WELCOME' || message.type === 'AUTH_RENEWED')
+            this.scheduleRenewal(message.type === 'WELCOME' ? message.authExpiresAt : message.expiresAt);
           if (message.type === 'PONG') this.lastPong = Date.now();
           this.handlers.onMessage(message);
         } catch (error) {
@@ -107,6 +124,7 @@ export class RoomSocket {
       socket.onclose = (event) => {
         if (generation !== this.generation) return;
         clearInterval(this.heartbeat);
+        clearTimeout(this.renewal);
         this.socket = null;
         if (event.code === 4403) {
           this.stop();

@@ -91,7 +91,12 @@ describe('shared room state boundary', () => {
     const { client, handlers } = setup();
     handlers.onMessage({ type: 'ROOM_STATE', room: fixture() });
     handlers.onMessage(error('00000000-0000-4000-8000-000000000009', 'ROOM_CONNECTION_CONFLICT'));
-    handlers.onMessage({ type: 'WELCOME', connectionId: 'new', activeRoomId: fixture().id });
+    handlers.onMessage({
+      type: 'WELCOME',
+      connectionId: 'new',
+      activeRoomId: fixture().id,
+      authExpiresAt: Date.now() + 15 * 60000,
+    });
     expect(client.getSnapshot().room).toBeNull();
     expect(client.getSnapshot().error).toContain('다른 탭');
     expect(sessionStorage.getItem(`nackchal-room:${userId}`)).toBeNull();

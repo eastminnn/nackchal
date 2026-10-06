@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getUser, type User } from '../auth/api';
+import { getUser, renewSession, type User } from '../auth/api';
 import { sharedRoomSchema } from './protocol';
 import { RoomSocket } from './RoomSocket';
 
 vi.mock('../auth/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('../auth/api')>();
-  return { ...original, getUser: vi.fn() };
+  return { ...original, getUser: vi.fn(), renewSession: vi.fn() };
 });
 class SocketBoundary {
   static readonly OPEN = 1;
@@ -38,6 +38,9 @@ function boundary() {
   if (!socket) throw new Error('Expected WebSocket connection');
   return socket;
 }
+function welcome(authExpiresAt = Date.now() + 15 * 60000) {
+  return { type: 'WELCOME', connectionId: 'socket-1', activeRoomId: null, authExpiresAt };
+}
 function setup() {
   const handlers = {
     userId: user.id,
@@ -60,6 +63,7 @@ describe('room socket lifecycle', () => {
       Object.assign(new EventTarget(), { location: { href: 'https://auction.example/' } }),
     );
     vi.mocked(getUser).mockResolvedValue(user);
+    vi.mocked(renewSession).mockResolvedValue(true);
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -71,7 +75,7 @@ describe('room socket lifecycle', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(handlers.onStatus).not.toHaveBeenCalledWith('connected');
     expect(boundary().url.href).toBe('wss://auction.example/api/rooms/ws');
-    boundary().message({ type: 'WELCOME', connectionId: 'socket-1', activeRoomId: null });
+    boundary().message(welcome());
     expect(handlers.onStatus).toHaveBeenLastCalledWith('connected');
     stop();
   });
@@ -111,10 +115,27 @@ describe('room socket lifecycle', () => {
   it('stops claiming connected when heartbeat responses disappear', async () => {
     const { handlers, stop } = setup();
     await vi.advanceTimersByTimeAsync(0);
-    boundary().message({ type: 'WELCOME', connectionId: 'socket-1', activeRoomId: null });
+    boundary().message(welcome());
     await vi.advanceTimersByTimeAsync(30000);
     expect(handlers.onStatus).toHaveBeenLastCalledWith('reconnecting');
     expect(boundary().sent).toHaveLength(2);
+    stop();
+  });
+  it('renews the session a minute before the socket authentication expires', async () => {
+    const { stop } = setup();
+    await vi.advanceTimersByTimeAsync(0);
+    const socket = boundary();
+    socket.send = (message: string) => {
+      socket.message({ type: 'PONG', requestId: JSON.parse(message).requestId });
+    };
+    socket.message(welcome());
+    await vi.advanceTimersByTimeAsync(13 * 60000);
+    expect(renewSession).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(renewSession).toHaveBeenCalledOnce();
+    boundary().message({ type: 'AUTH_RENEWED', expiresAt: Date.now() + 15 * 60000 });
+    await vi.advanceTimersByTimeAsync(13 * 60000);
+    expect(renewSession).toHaveBeenCalledOnce();
     stop();
   });
 });

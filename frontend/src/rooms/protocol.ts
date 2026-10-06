@@ -37,7 +37,13 @@ export const sharedRoomSchema = z.object({
     .max(30),
 });
 export const serverMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('WELCOME'), connectionId: z.string(), activeRoomId: roomId.nullable() }),
+  z.object({
+    type: z.literal('WELCOME'),
+    connectionId: z.string(),
+    activeRoomId: roomId.nullable(),
+    authExpiresAt: z.number().int(),
+  }),
+  z.object({ type: z.literal('AUTH_RENEWED'), expiresAt: z.number().int() }),
   z.object({ type: z.literal('ROOM_LIST'), version: z.number().int(), rooms: z.array(summary) }),
   z.object({ type: z.literal('ROOM_STATE'), room: sharedRoomSchema }),
   z.object({ type: z.literal('LEFT'), reason: z.enum(['left', 'expired', 'logout']) }),

@@ -121,6 +121,7 @@ export class RoomClient {
         return;
       }
       case 'PONG':
+      case 'AUTH_RENEWED':
         return;
       default:
         return message satisfies never;
