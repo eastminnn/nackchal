@@ -168,6 +168,12 @@ body:has(.immersive-game) {
   color: var(--ink);
   text-shadow: 0 2px 8px #111916;
 }
+.hud-settlement {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
 .hud-quiet {
   border: 0;
   background: transparent;

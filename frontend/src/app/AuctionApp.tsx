@@ -127,7 +127,7 @@ export function AuctionApp({
               <span>장난 상점 · 미리보기</span>
             </Button>
             <span className="header-divider" />
-            <Cash amount={state.cash} />
+            {shared.cash !== null && <Cash amount={shared.cash} />}
             <Button
               variant="ghost"
               disabled={loggingOut}
@@ -214,8 +214,7 @@ export function AuctionApp({
             </section>
           </div>
           <p className="demo-note">
-            최대 4명이 같은 대기실에 입장하고 준비 상태와 채팅을 나눌 수 있어요. 경매 진행과 보상은 아직 준비
-            중이에요.
+            최대 4명이 같은 대기실에 입장해 함께 경매해요. 끝까지 남은 참가자는 순위에 따라 캐시를 받아요.
           </p>
           <Button className="rules-close" onClick={() => setModal(null)}>
             좋아, 이해했어!

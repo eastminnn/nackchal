@@ -14,7 +14,7 @@ import { Timer } from '../components/game/Timer';
 import { Button, Money } from '../components/ui/primitives';
 import { MIN_PLAYERS, type RoomState, SELF } from '../game/types';
 import { ConnectionNotice } from '../rooms/ConnectionNotice';
-import type { ConnectionStatus, SharedRoom } from '../rooms/protocol';
+import type { ConnectionStatus, SharedGame, SharedRoom } from '../rooms/protocol';
 import type { RoomClient } from '../rooms/RoomClient';
 import { inProgress } from '../rooms/view';
 
@@ -51,7 +51,7 @@ export function WaitingRoom({
   const host = room.hostUserId === user.id;
   const connected = room.players.filter((player) => player.connected).length;
   const guestsReady = room.players.every((player) => player.userId === room.hostUserId || player.ready);
-  const canStart = host && connected >= MIN_PLAYERS && guestsReady;
+  const canStart = host && connected >= MIN_PLAYERS && guestsReady && !room.starting;
   const myBalance = state.players.find((player) => player.id === SELF)?.balance ?? 0;
   const leader = state.players.find((player) => player.id === state.leader);
   const result = game && !live && dismissedResult !== game.gameId ? game : null;
@@ -194,11 +194,11 @@ export function WaitingRoom({
                   }}
                 >
                   <PlayIcon size={18} weight="fill" />
-                  경매 시작하기
+                  {room.starting ? '시작하는 중…' : '경매 시작하기'}
                 </Button>
               ) : (
                 <Button
-                  disabled={!online || pending || !me}
+                  disabled={!online || pending || !me || room.starting}
                   aria-pressed={me?.ready ?? false}
                   onClick={() => {
                     void client.command({ type: 'SET_READY', ready: !me?.ready });
@@ -251,6 +251,11 @@ export function WaitingRoom({
                 ))}
               </ol>
             )}
+            {result.status === 'FINISHED' && (
+              <p className="hud-settlement" role="status">
+                {settlementLabel(result.settlement)}
+              </p>
+            )}
             <p className="hud-waiting-note">다시 준비하면 같은 방에서 한 판 더 할 수 있어요.</p>
           </aside>
         )}
@@ -274,6 +279,16 @@ export function WaitingRoom({
 }
 function nickname(room: SharedRoom, userId: string) {
   return room.players.find((player) => player.userId === userId)?.nickname ?? '떠난 참가자';
+}
+function settlementLabel(settlement: SharedGame['settlement']) {
+  switch (settlement) {
+    case 'COMPLETED':
+      return '보상 캐시가 지갑에 들어왔어요.';
+    case 'FAILED':
+      return '캐시 정산에 실패했어요. 이번 판 보상은 들어오지 않았어요.';
+    default:
+      return '캐시를 정산하는 중…';
+  }
 }
 function profitLabel(profit: number) {
   return profit >= 0 ? `+$${profit} 이득` : `-$${-profit} 손해`;

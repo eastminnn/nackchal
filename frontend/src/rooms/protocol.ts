@@ -59,6 +59,8 @@ const gameSchema = z.object({
       ),
     })
     .nullable(),
+  /** 끝난 판의 캐시 정산 상태. 진행 중에는 null. COMPLETED여야 보상이 지갑에 들어간 것이다. */
+  settlement: z.enum(['PENDING', 'COMPLETED', 'FAILED']).nullable(),
 });
 export const sharedRoomSchema = z.object({
   id: roomId,
@@ -82,6 +84,8 @@ export const sharedRoomSchema = z.object({
     .array(z.object({ id: z.number().int(), userId, nickname: z.string(), body: z.string(), at: z.number() }))
     .max(30),
   game: gameSchema.nullable(),
+  /** 방장이 시작을 눌러 서버가 게임을 기록하는 중인지. */
+  starting: z.boolean(),
 });
 export const serverMessageSchema = z.discriminatedUnion('type', [
   z.object({
@@ -91,6 +95,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     authExpiresAt: z.number().int(),
   }),
   z.object({ type: z.literal('AUTH_RENEWED'), expiresAt: z.number().int() }),
+  z.object({ type: z.literal('WALLET'), balance: z.number().int().min(0) }),
   z.object({ type: z.literal('ROOM_LIST'), version: z.number().int(), rooms: z.array(summary) }),
   z.object({ type: z.literal('ROOM_STATE'), serverTime: z.number(), room: sharedRoomSchema }),
   z.object({ type: z.literal('LEFT'), reason: z.enum(['left', 'expired', 'logout']) }),

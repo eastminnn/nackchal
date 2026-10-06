@@ -113,6 +113,13 @@ export function renewSession(): Promise<boolean> {
   );
 }
 
+const walletSchema = z.object({ balance: z.number().int().min(0) });
+
+/** 내 캐시 잔액. 다른 사람의 잔액은 조회할 수 없다. */
+export function getWallet(): Promise<number> {
+  return request(async () => walletSchema.parse(await api.get('/api/wallet').json()).balance);
+}
+
 export function getUser(): Promise<User | null> {
   return request(async () => (await readUser()) ?? refreshUser());
 }
