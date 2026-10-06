@@ -5,6 +5,12 @@ import { aimBone, type SeatedModel } from './modelPose';
 /** 모션 길이(ms). 서버의 EmoteKind와 같다. */
 export const EMOTE_DURATION: Readonly<Record<EmoteKind, number>> = { MIDDLE_FINGER: 3000, SMOKE: 6000 };
 
+/**
+ * 손 소품이 손바닥 뼈에서 소품 방향으로 끝나는 거리. 인형 손은 둥근 장갑이라(손바닥에서 0.13~0.22) 이보다 길어야 보인다.
+ * 주먹은 인형 손 자체를 쓰고 가운뎃손가락만 손 위로 솟게 한다.
+ */
+export const EMOTE_PROP = { fingerTip: 0.37, cigaretteTip: 0.4 } as const;
+
 const FINGER_RAISE = 400;
 const FINGER_LOWER = 2600;
 const SMOKE_CYCLE = 3000;
