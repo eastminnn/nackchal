@@ -30,6 +30,8 @@ try {
     await expect(page.locator('[data-connection="connected"]')).toBeVisible();
   }
   const [host, guest, watcher] = pages;
+  for (const page of pages) await expect(page.locator('.site-header .cash')).toContainText('0');
+  record('lobby cash', 'each new account sees its own server wallet (0 캐시) in the lobby header');
   await host.getByRole('button', { name: '방 만들기', exact: true }).click();
   await expect(host.locator('.hud-round')).toHaveText('1 / 4명');
   const roomName = await host.locator('h1').innerText();
@@ -73,6 +75,7 @@ try {
 
   await guest.getByRole('button', { name: '방 목록', exact: true }).click();
   await expect(host.getByRole('complementary', { name: '지난 게임 결과' })).toContainText('게임이 중단됐어요');
+  await expect(host.locator('.hud-settlement')).toHaveCount(0);
   await expect(host.getByRole('button', { name: '경매 시작하기' })).toBeDisabled();
   await shot(host, 'aborted');
   await host.getByRole('button', { name: '결과 닫기' }).click();

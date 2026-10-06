@@ -21,10 +21,15 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
+import com.nackchal.domain.auction.model.AuctionRules;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -37,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "app.rooms.allowed-origins=http://rooms.test")
+@Import(RoomWebSocketIntegrationTests.QuickGame.class)
 class RoomWebSocketIntegrationTests {
     private static final String ORIGIN = "http://rooms.test";
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -46,6 +52,16 @@ class RoomWebSocketIntegrationTests {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
     @LocalServerPort int port;
+
+    /** 한 판을 몇 초 안에 끝내는 규칙. 입찰 테스트가 끝날 때까지 첫 경매는 열려 있다. */
+    @TestConfiguration
+    static class QuickGame {
+        @Bean @Primary
+        AuctionRules quickRules() {
+            return new AuctionRules(AuctionRules.DEFAULT.version(), 2, 100, 5, Duration.ofSeconds(2),
+                    Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofSeconds(3), Duration.ofSeconds(15));
+        }
+    }
 
     @Test
     void twoAccountsCreateJoinReadyAndChatUsingAuthenticatedIdentity() throws Exception {
@@ -251,6 +267,39 @@ class RoomWebSocketIntegrationTests {
     }
 
     @Test
+    void finishedGameIsSettledAndOnlyRewardedPlayersHearTheirOwnWallet() throws Exception {
+        try (var host = account("방장"); var guest = account("참가자"); var lobby = account("구경꾼")) {
+            var first = host.connect();
+            var second = guest.connect();
+            var watcher = lobby.connect();
+            String roomId = create(first);
+            join(second, roomId);
+            second.accept("SET_READY", Map.of("ready", true));
+            first.accept("START_GAME", Map.of());
+
+            var finished = first.state(roomId, room -> text(room.path("game").path("status")).equals("FINISHED"));
+            assertThat(finished.path("game").path("settlement").stringValue()).isEqualTo("PENDING");
+            assertThat(finished.path("starting").booleanValue()).isFalse();
+            var settled = first.state(roomId,
+                    room -> text(room.path("game").path("settlement")).equals("COMPLETED"));
+            var ranking = settled.path("game").path("result").path("ranking");
+            assertThat(ranking).hasSize(2);
+
+            for (var pair : List.of(Map.entry(host, first), Map.entry(guest, second))) {
+                long reward = find(ranking, entry -> entry.path("userId").stringValue().equals(pair.getKey().userId))
+                        .path("reward").longValue();
+                var wallet = pair.getValue().await(node -> type(node, "WALLET"));
+                assertThat(wallet.path("balance").longValue()).isEqualTo(reward);
+                var response = pair.getKey().get("/api/wallet");
+                assertThat(JSON.readTree(response.body()).path("balance").longValue()).isEqualTo(reward);
+            }
+            watcher.barrier();
+            assertThat(watcher.history).noneMatch(node -> type(node, "WALLET"));
+            assertThat(watcher.pending).noneMatch(node -> type(node, "WALLET"));
+        }
+    }
+
+    @Test
     void tokenRefreshExtendsOpenSocketsOfSameUserOnly() throws Exception {
         try (var host = account("방장"); var other = account("손님")) {
             var first = host.connect();
@@ -345,6 +394,10 @@ class RoomWebSocketIntegrationTests {
     private static JsonNode find(JsonNode nodes, Predicate<JsonNode> predicate) {
         for (JsonNode node : nodes) if (predicate.test(node)) return node;
         throw new AssertionError("Expected matching entry in " + nodes);
+    }
+
+    private static String text(JsonNode node) {
+        return node.isString() ? node.stringValue() : "";
     }
 
     private static boolean type(JsonNode node, String type) {
