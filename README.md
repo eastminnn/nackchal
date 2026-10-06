@@ -71,7 +71,7 @@ docker compose logs -f backend
 docker compose down
 ```
 
-`down` 후에도 PostgreSQL 데이터는 named volume에 남습니다. 예시 비밀번호와 loopback 포트는 로컬 개발용입니다. Oracle 배포 전에 도메인·HTTPS·운영 비밀번호·외부 포트 정책을 따로 적용해야 합니다. 현재 설정은 공개 배포가 아닙니다.
+`down` 후에도 PostgreSQL 데이터는 named volume에 남습니다. 예시 비밀번호와 loopback 포트는 로컬 개발용입니다. 공개 배포는 아래 [운영 배포](#운영-배포)를 따릅니다.
 
 첫 화면에서 가입한 뒤 로그인합니다. `user`는 프로필, `auth`는 가입·로그인·토큰 갱신을 담당합니다. 인증에는 서버 세션 대신 HttpOnly 쿠키로 전달하는 JWT access 토큰(15분)과 refresh 토큰(최초 로그인부터 7일)을 사용합니다. refresh 토큰은 갱신할 때마다 교체되며 DB에는 해시만 저장합니다. 갱신해도 최초 만료일은 늘어나지 않습니다. 같은 `JWT_SECRET`과 DB를 유지하면 서버 재시작 후에도 로그인 상태를 복구할 수 있습니다.
 
@@ -82,6 +82,26 @@ docker compose down
 ```sh
 docker compose up -d --build --no-deps frontend
 ```
+
+## 운영 배포
+
+운영 주소는 https://nackchal.duckdns.org 입니다. Oracle Cloud 오사카 리전의 ARM VM(Ubuntu 24.04) 한 대에서 `docker-compose.yml`과 `docker-compose.prod.yml`을 함께 실행합니다. DNS는 DuckDNS가 서버 공인 IP를 가리킵니다.
+
+- `docker-compose.prod.yml`이 Caddy를 추가합니다. 외부에는 Caddy의 80·443만 열리고, Let's Encrypt 인증서를 자동으로 받고 갱신합니다. HTTP는 HTTPS로 넘깁니다. PostgreSQL·백엔드·Nginx 포트는 서버의 127.0.0.1에만 열립니다.
+- Nginx는 Docker 내부망에서 온 `X-Forwarded-For`를 실제 클라이언트 IP로 사용합니다. 그래서 가입·로그인 빈도 제한이 Caddy 뒤에서도 사용자 IP별로 동작합니다.
+- Oracle 보안 목록과 서버 iptables에서 TCP 80·443을 허용합니다. iptables 규칙은 `netfilter-persistent`로 저장돼 재부팅 후에도 유지됩니다.
+- 서버의 `~/nackchal/.env`는 서버에서만 만들고 권한은 600입니다. `POSTGRES_PASSWORD`와 `JWT_SECRET`은 서버에서 `openssl`로 생성했고 레포·로컬에는 없습니다. 운영 값은 `AUTH_COOKIE_SECURE=true`, `ROOM_ALLOWED_ORIGINS=https://nackchal.duckdns.org`, `SITE_DOMAIN=nackchal.duckdns.org`입니다.
+
+레포가 비공개라 서버에서 직접 받지 않고, 로컬에서 배포할 커밋을 묶어 보낸 뒤 서버에서 다시 빌드합니다. `.env`와 Docker volume(DB 데이터, Caddy 인증서)은 그대로 유지됩니다.
+
+```sh
+git archive main | ssh -i ~/.ssh/oracle.key ubuntu@161.33.13.111 'tar -x -C ~/nackchal'
+ssh -i ~/.ssh/oracle.key ubuntu@161.33.13.111 \
+  'cd ~/nackchal && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait'
+curl https://nackchal.duckdns.org/api/health
+```
+
+`git archive`는 레포에서 지운 파일을 서버에서 지우지 않습니다. 파일을 삭제한 배포에서는 서버의 해당 파일도 직접 지웁니다. 백엔드 재시작 시 진행 중인 경매는 사라지며, 이전 실행에서 끝내지 못한 판은 보상 없이 중단으로 기록됩니다.
 
 ## 로컬 개발
 
