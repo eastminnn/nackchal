@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
@@ -16,7 +18,9 @@ import java.util.UUID;
         @JsonSubTypes.Type(value = RoomCommand.Leave.class, name = "LEAVE_ROOM"),
         @JsonSubTypes.Type(value = RoomCommand.Ready.class, name = "SET_READY"),
         @JsonSubTypes.Type(value = RoomCommand.Chat.class, name = "SEND_CHAT"),
-        @JsonSubTypes.Type(value = RoomCommand.Ping.class, name = "PING")
+        @JsonSubTypes.Type(value = RoomCommand.Ping.class, name = "PING"),
+        @JsonSubTypes.Type(value = RoomCommand.StartGame.class, name = "START_GAME"),
+        @JsonSubTypes.Type(value = RoomCommand.PlaceBid.class, name = "PLACE_BID")
 })
 sealed interface RoomCommand {
     UUID requestId();
@@ -28,4 +32,9 @@ sealed interface RoomCommand {
     record Ready(@NotNull UUID requestId, @NotNull Boolean ready) implements RoomCommand {}
     record Chat(@NotNull UUID requestId, @NotBlank @Size(max = 400) String body) implements RoomCommand {}
     record Ping(@NotNull UUID requestId) implements RoomCommand {}
+    record StartGame(@NotNull UUID requestId) implements RoomCommand {}
+    /** amount는 증가분이 아니라 최종 입찰 금액. expectedBidVersion은 클라이언트가 마지막으로 본 입찰 버전. */
+    record PlaceBid(@NotNull UUID requestId, @NotNull UUID gameId, @NotNull @Positive Integer round,
+                    @NotNull @PositiveOrZero Long expectedBidVersion, @NotNull @Positive Integer amount)
+            implements RoomCommand {}
 }

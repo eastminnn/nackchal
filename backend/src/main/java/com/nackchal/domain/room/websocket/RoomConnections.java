@@ -2,6 +2,7 @@ package com.nackchal.domain.room.websocket;
 
 import com.nackchal.common.security.event.AccessTokenRenewedEvent;
 import com.nackchal.common.security.event.UserLoggedOutEvent;
+import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
 import com.nackchal.domain.room.service.RoomService;
@@ -101,7 +102,7 @@ public class RoomConnections {
             send(connection, listing);
             if (roomService.roomId(connection.actor).filter(event.roomId()::equals).isPresent()) {
                 roomService.find(event.roomId()).ifPresent(room ->
-                        send(connection, Map.of("type", "ROOM_STATE", "room", room)));
+                        send(connection, roomState(room)));
             }
         });
     }
@@ -143,6 +144,11 @@ public class RoomConnections {
     }
 
     /** 증가하는 version을 붙인 방 목록 이벤트. 클라이언트는 오래된 목록을 무시한다. */
+    /** 방 스냅샷 이벤트. serverTime으로 클라이언트가 시계 차이를 보정해 단계 마감 시각을 표시한다. */
+    Map<String, Object> roomState(RoomResponse room) {
+        return Map.of("type", "ROOM_STATE", "serverTime", clock.instant().toEpochMilli(), "room", room);
+    }
+
     private Object roomList() {
         return Map.of("type", "ROOM_LIST", "version", listVersion.incrementAndGet(), "rooms", roomService.list());
     }

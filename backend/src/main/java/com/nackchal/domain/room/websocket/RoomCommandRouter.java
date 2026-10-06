@@ -3,6 +3,7 @@ package com.nackchal.domain.room.websocket;
 import com.nackchal.common.exception.CustomException;
 import com.nackchal.common.exception.error.ErrorCode;
 import com.nackchal.common.exception.error.ErrorResponse;
+import com.nackchal.domain.auction.model.BidRejectedException;
 import com.nackchal.domain.room.service.RoomService;
 import jakarta.validation.Validator;
 import java.time.Clock;
@@ -68,7 +69,9 @@ public class RoomCommandRouter {
             } catch (JacksonException exception) {
                 connections.send(connection, error(requestId, ErrorCode.INVALID_REQUEST_BODY));
             } catch (CustomException exception) {
-                Object reply = error(requestId, exception.getErrorCode());
+                Map<String, Object> reply = error(requestId, exception.getErrorCode());
+                // 거절된 입찰은 현재 가격·버전을 함께 보내 클라이언트가 바로 다시 입찰할 수 있게 한다.
+                if (exception instanceof BidRejectedException rejected) reply.put("auction", rejected.getAuction());
                 if (requestId != null && !connection.replies.containsKey(requestId)) {
                     connection.remember(requestId, payload, reply);
                 }
@@ -87,7 +90,7 @@ public class RoomCommandRouter {
             case RoomCommand.Join join -> {
                 var room = roomService.join(connection.actor, join.roomId());
                 // 같은 연결의 입장 재시도에도 현재 상태를 돌려준다.
-                connections.send(connection, Map.of("type", "ROOM_STATE", "room", room));
+                connections.send(connection, connections.roomState(room));
             }
             case RoomCommand.Leave ignored -> {
                 roomService.leave(connection.actor);
@@ -95,6 +98,9 @@ public class RoomCommandRouter {
             }
             case RoomCommand.Ready ready -> roomService.ready(connection.actor, ready.ready());
             case RoomCommand.Chat chat -> roomService.chat(connection.actor, chat.body());
+            case RoomCommand.StartGame ignored -> roomService.startGame(connection.actor);
+            case RoomCommand.PlaceBid bid -> roomService.placeBid(connection.actor, bid.gameId(), bid.round(),
+                    bid.expectedBidVersion(), bid.amount());
             case RoomCommand.Ping ignored -> {
                 return Map.of("type", "PONG", "requestId", command.requestId());
             }
@@ -102,7 +108,7 @@ public class RoomCommandRouter {
         return Map.of("type", "ACK", "requestId", command.requestId());
     }
 
-    private Object error(UUID requestId, ErrorCode code) {
+    private Map<String, Object> error(UUID requestId, ErrorCode code) {
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("type", "ERROR");
         event.put("requestId", requestId);
