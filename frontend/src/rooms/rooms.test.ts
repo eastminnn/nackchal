@@ -29,9 +29,11 @@ const fixture = () =>
     ],
     chats: [{ id: 1, userId: peerId, nickname: '토끼', body: '안녕', at: 10 }],
     game: null,
+    starting: false,
   });
+const loadWallet = vi.fn(() => Promise.resolve(7));
 function setup() {
-  const client = new RoomClient(userId);
+  const client = new RoomClient(userId, loadWallet);
   const call = vi.mocked(RoomSocket).mock.calls.at(-1);
   if (!call) throw new Error('Room socket was not constructed');
   const [handlers] = call;
@@ -41,6 +43,53 @@ function setup() {
 function error(requestId: string, code: string): ServerMessage {
   return { type: 'ERROR', requestId, error: { code, status: 409, message: '입장할 수 없어요.', errors: [] } };
 }
+describe('wallet', () => {
+  beforeEach(() => {
+    vi.stubGlobal('sessionStorage', { setItem: vi.fn(), getItem: vi.fn(() => null), removeItem: vi.fn() });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+  it('loads my cash on every welcome and follows WALLET events', async () => {
+    const { client, handlers } = setup();
+    expect(client.getSnapshot().cash).toBeNull();
+    handlers.onMessage({ type: 'WELCOME', connectionId: 'a', activeRoomId: null, authExpiresAt: 1 });
+    await vi.waitFor(() => expect(client.getSnapshot().cash).toBe(7));
+    handlers.onMessage({ type: 'WALLET', balance: 17 });
+    expect(client.getSnapshot().cash).toBe(17);
+    expect(loadWallet).toHaveBeenCalledTimes(1);
+  });
+  it('ignores a lookup that started before a newer WALLET event', async () => {
+    const { client, handlers } = setup();
+    let finish: (cash: number) => void = () => {};
+    loadWallet.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    handlers.onMessage({ type: 'WELCOME', connectionId: 'a', activeRoomId: null, authExpiresAt: 1 });
+    handlers.onMessage({ type: 'WALLET', balance: 20 });
+    finish(10);
+    await Promise.resolve();
+    expect(client.getSnapshot().cash).toBe(20);
+  });
+  it('keeps the last known cash when the lookup fails', async () => {
+    const { client, handlers } = setup();
+    handlers.onMessage({ type: 'WALLET', balance: 3 });
+    loadWallet.mockRejectedValueOnce(new Error('offline'));
+    handlers.onMessage({ type: 'WELCOME', connectionId: 'a', activeRoomId: null, authExpiresAt: 1 });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(client.getSnapshot().cash).toBe(3);
+    expect(client.getSnapshot().error).toBe('');
+  });
+  it('accepts wallet, starting and settlement fields from the server', () => {
+    expect(serverMessageSchema.parse({ type: 'WALLET', balance: 27 })).toEqual({
+      type: 'WALLET',
+      balance: 27,
+    });
+    expect(sharedRoomSchema.parse({ ...fixture(), starting: true }).starting).toBe(true);
+    expect(() => serverMessageSchema.parse({ type: 'WALLET', balance: -1 })).toThrow();
+  });
+});
+
 describe('shared room state boundary', () => {
   beforeEach(() => {
     const data = new Map<string, string>();
@@ -165,6 +214,7 @@ describe('shared room state boundary', () => {
       reveal: null,
       history: [],
       result: null,
+      settlement: null,
     };
     const user: User = { id: room.hostUserId, nickname: '고양이', avatarCode: 'plush-cat' };
     const live = waitingView(initialState(), sharedRoomSchema.parse({ ...room, game }), user, 1_000);

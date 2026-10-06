@@ -1,6 +1,7 @@
 package com.nackchal.domain.room.service;
 
 import com.nackchal.domain.auction.model.AuctionGame;
+import com.nackchal.domain.game.service.GameStart;
 import com.nackchal.domain.room.dto.response.RoomChatResponse;
 import com.nackchal.domain.room.dto.response.RoomMemberResponse;
 import com.nackchal.domain.room.dto.response.RoomResponse;
@@ -21,6 +22,8 @@ final class WaitingRoom {
     long chatSequence;
     /** 가장 최근 게임. 끝난 게임도 다음 시작 전까지 결과 표시용으로 남긴다. */
     AuctionGame game;
+    /** DB에 기록 중인 게임 시작. 기록이 끝나면 game으로 바뀌거나 취소된다. */
+    GameStart starting;
 
     WaitingRoom(String id, String name) { this.id = id; this.name = name; }
 
@@ -28,8 +31,13 @@ final class WaitingRoom {
         return members.values().stream().anyMatch(member -> member.seat == seat);
     }
 
-    /** 입장·준비를 막아야 하는 진행 중 게임이 있는지. */
+    /** 입장·준비를 막아야 하는 시작 중이거나 진행 중인 게임이 있는지. */
     boolean playing() {
+        return starting != null || gameInProgress();
+    }
+
+    /** 입찰·단계 전환·이탈 처리가 필요한 게임이 있는지. */
+    boolean gameInProgress() {
         return game != null && game.inProgress();
     }
 
@@ -42,7 +50,7 @@ final class WaitingRoom {
                 members.values().stream().map(member -> new RoomMemberResponse(member.actor.userId(),
                         member.actor.nickname(), member.actor.avatarCode(), member.seat, member.ready,
                         member.disconnectedAt == null)).toList(), List.copyOf(chats),
-                game == null ? null : game.snapshot());
+                game == null ? null : game.snapshot(), starting != null);
     }
 
     static final class Member {

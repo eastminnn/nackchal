@@ -3,12 +3,18 @@ package com.nackchal.domain.room.service;
 import com.nackchal.common.exception.CustomException;
 import com.nackchal.common.exception.error.ErrorCode;
 import com.nackchal.domain.auction.model.AuctionGame;
+import com.nackchal.domain.auction.model.AuctionRules;
+import com.nackchal.domain.auction.model.GameSettlement;
+import com.nackchal.domain.game.service.GameRecords;
+import com.nackchal.domain.game.service.GameSettlementDispatcher;
+import com.nackchal.domain.game.service.GameStart;
 import com.nackchal.domain.room.dto.response.RoomChatResponse;
 import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.dto.response.RoomSummaryResponse;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
 import com.nackchal.domain.room.service.WaitingRoom.Member;
+import com.nackchal.domain.wallet.event.WalletChangedEvent;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -21,6 +27,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -28,6 +36,7 @@ import org.springframework.stereotype.Service;
 /** 사용자별 입장과 방별 변경을 직렬화하는 메모리 대기실 저장소. */
 @Service
 public class RoomService {
+    private static final Logger log = LoggerFactory.getLogger(RoomService.class);
     public static final int MIN_PLAYERS = 2;
     public static final int MAX_PLAYERS = 4;
     private static final int MAX_ROOMS = 1000;
@@ -40,10 +49,20 @@ public class RoomService {
     private final SecureRandom random = new SecureRandom();
     private final Clock clock;
     private final ApplicationEventPublisher events;
+    private final GameRecords records;
+    private final GameSettlementDispatcher settlements;
+    private final AuctionRules rules;
 
-    public RoomService(Clock clock, ApplicationEventPublisher events) {
+    /** 잠금 안에서 꺼내고 잠금을 푼 뒤 제출할 정산. */
+    private record Pending(String roomId, GameSettlement settlement) {}
+
+    public RoomService(Clock clock, ApplicationEventPublisher events, GameRecords records,
+                       GameSettlementDispatcher settlements, AuctionRules rules) {
         this.clock = clock;
         this.events = events;
+        this.records = records;
+        this.settlements = settlements;
+        this.rules = rules;
         for (int i = 0; i < userLocks.length; i++) userLocks[i] = new Object();
     }
 
@@ -200,11 +219,14 @@ public class RoomService {
     /**
      * 방장이 게임을 시작한다. 연결된 참가자가 2명 이상이고 방장을 뺀 전원이 준비해야 한다.
      * 재접속 대기 중인 참가자는 준비가 해제돼 있으므로 시작을 막는다.
+     * 잠금을 쥔 채 DB를 기다리지 않도록 세 단계로 나눈다. 방을 시작 중으로 표시하고 잠금을 푼 뒤 시작을 기록하고,
+     * 기록이 끝나면 다시 잠가 경매를 연다. 타이머는 기록이 끝난 시각부터 잰다.
      * @throws CustomException ROOM_NOT_JOINED, GAME_NOT_HOST, GAME_ALREADY_STARTED, GAME_NOT_ENOUGH_PLAYERS,
-     *                         GAME_PLAYERS_NOT_READY
+     *                         GAME_PLAYERS_NOT_READY, GAME_START_FAILED
      */
     public RoomResponse startGame(RoomActor actor) {
-        return mutate(actor, false, (room, member) -> {
+        GameStart[] prepared = new GameStart[1];
+        mutate(actor, false, (room, member) -> {
             if (!actor.userId().equals(room.host())) throw error(ErrorCode.GAME_NOT_HOST);
             if (room.playing()) throw error(ErrorCode.GAME_ALREADY_STARTED);
             long connected = room.members.values().stream().filter(other -> other.disconnectedAt == null).count();
@@ -213,9 +235,59 @@ public class RoomService {
                     .filter(entry -> !entry.getKey().equals(actor.userId()))
                     .allMatch(entry -> entry.getValue().ready);
             if (!othersReady) throw error(ErrorCode.GAME_PLAYERS_NOT_READY);
-            room.game = AuctionGame.start(room.members.keySet(), clock.instant(), random);
+            prepared[0] = new GameStart(UUID.randomUUID(), room.id, rules.version(), clock.instant(),
+                    room.members.entrySet().stream().map(entry -> new GameStart.Seat(entry.getKey(),
+                            entry.getValue().seat, entry.getValue().actor.nickname(),
+                            entry.getValue().actor.avatarCode())).toList());
+            room.starting = prepared[0];
             return true;
         });
+        GameStart start = prepared[0];
+        boolean recorded;
+        try {
+            records.recordStart(start);
+            recorded = true;
+        } catch (RuntimeException exception) {
+            log.error("Game start record failed: gameId={}", start.gameId(), exception);
+            recorded = false;
+        }
+        return finishStart(start, recorded);
+    }
+
+    /**
+     * 시작 기록 결과를 방에 반영한다. 기록하는 동안 나간 참가자는 바로 이탈로 처리하며, 그 때문에 끝난 판과
+     * 방이 사라져 열지 못한 판은 중단으로 정산해 RUNNING 기록이 남지 않게 한다.
+     */
+    private RoomResponse finishStart(GameStart start, boolean recorded) {
+        List<String> changed = new ArrayList<>();
+        List<Pending> pending = new ArrayList<>();
+        List<UUID> userIds = start.seats().stream().map(GameStart.Seat::userId).toList();
+        RoomResponse response = null;
+        WaitingRoom room = rooms.get(start.roomCode());
+        if (room != null) synchronized (room) {
+            if (room.starting == start) {
+                room.starting = null;
+                if (recorded) {
+                    Instant now = clock.instant();
+                    room.game = AuctionGame.start(start.gameId(), userIds, now, rules, random);
+                    userIds.stream().filter(userId -> !room.members.containsKey(userId))
+                            .forEach(userId -> room.game.leave(userId, now));
+                    if (!room.game.inProgress()) resetReady(room);
+                    collectSettlement(room, pending);
+                }
+                room.version++;
+                changed.add(room.id);
+                response = room.snapshot();
+            }
+        }
+        if (response == null && recorded) {
+            pending.add(new Pending(start.roomCode(), GameSettlement.abandoned(start.gameId(), userIds, clock.instant())));
+        }
+        publish(changed);
+        submit(pending);
+        if (!recorded) throw error(ErrorCode.GAME_START_FAILED);
+        if (response == null) throw error(ErrorCode.ROOM_NOT_JOINED);
+        return response;
     }
 
     /**
@@ -240,16 +312,19 @@ public class RoomService {
     public void advanceGames() {
         Instant now = clock.instant();
         List<String> changed = new ArrayList<>();
+        List<Pending> pending = new ArrayList<>();
         rooms.values().forEach(room -> {
             synchronized (room) {
-                if (room.playing() && room.game.advance(now)) {
+                if (room.gameInProgress() && room.game.advance(now)) {
                     if (!room.game.inProgress()) resetReady(room);
+                    collectSettlement(room, pending);
                     room.version++;
                     changed.add(room.id);
                 }
             }
         });
         publish(changed);
+        submit(pending);
     }
 
     /** 연결 종료 처리. 자리는 30초 동안 남기고 준비는 해제한다. 이미 교체된 연결이면 무시한다. */
@@ -264,21 +339,25 @@ public class RoomService {
     /** 로그아웃한 사용자를 연결과 관계없이 방에서 즉시 제거한다. */
     public void removeUser(UUID userId) {
         List<String> changed = new ArrayList<>();
+        List<Pending> pending = new ArrayList<>();
         forUser(userId, () -> {
             WaitingRoom room = memberships.get(userId);
             if (room != null) synchronized (room) {
                 remove(room, userId);
+                collectSettlement(room, pending);
                 room.version++;
                 changed.add(room.id);
             }
             return null;
         });
         publish(changed);
+        submit(pending);
     }
 
     /** 재접속 유예(30초)가 지난 참가자를 제거한다. 1초마다 스케줄러가 호출한다. */
     public void expireDisconnected() {
         List<String> changed = new ArrayList<>();
+        List<Pending> pending = new ArrayList<>();
         memberships.forEach((userId, ignored) -> forUser(userId, () -> {
             WaitingRoom room = memberships.get(userId);
             if (room != null) synchronized (room) {
@@ -286,6 +365,7 @@ public class RoomService {
                 if (member.disconnectedAt != null
                         && !clock.instant().isBefore(member.disconnectedAt.plus(RECONNECT_GRACE))) {
                     remove(room, userId);
+                    collectSettlement(room, pending);
                     room.version++;
                     changed.add(room.id);
                 }
@@ -293,11 +373,13 @@ public class RoomService {
             return null;
         }));
         publish(changed);
+        submit(pending);
     }
 
     /** 사용자 잠금 → 방 잠금 순으로 잡고 활성 참가자인지 확인한 뒤 변경한다. 변경되면 version을 올리고 이벤트를 발행한다. */
     private RoomResponse mutate(RoomActor actor, boolean ignoreStale, Mutation mutation) {
         List<String> changed = new ArrayList<>();
+        List<Pending> pending = new ArrayList<>();
         RoomResponse response = forUser(actor.userId(), () -> {
             WaitingRoom room = memberships.get(actor.userId());
             if (room == null) {
@@ -314,11 +396,13 @@ public class RoomService {
                     room.version++;
                     changed.add(room.id);
                 }
+                collectSettlement(room, pending);
                 return room.snapshot();
             }
         });
         // 동기 이벤트 구독자가 다른 방을 조회하더라도 잠금 순환이 생기지 않도록 밖에서 발행한다.
         publish(changed);
+        submit(pending);
         return response;
     }
 
@@ -327,7 +411,9 @@ public class RoomService {
      * 게임 중이면 이탈로 기록하고, 그 때문에 게임이 중단되면 남은 참가자의 준비를 해제한다.
      */
     private boolean remove(WaitingRoom room, UUID userId) {
-        if (room.playing() && room.game.leave(userId) && !room.game.inProgress()) resetReady(room);
+        if (room.gameInProgress() && room.game.leave(userId, clock.instant()) && !room.game.inProgress()) {
+            resetReady(room);
+        }
         room.members.remove(userId);
         memberships.remove(userId, room);
         if (room.members.isEmpty() && rooms.remove(room.id, room)) roomCount.decrementAndGet();
@@ -348,6 +434,36 @@ public class RoomService {
 
     private void publish(List<String> changed) {
         changed.stream().distinct().forEach(id -> events.publishEvent(new RoomChangedEvent(id)));
+    }
+
+    /** 방의 게임이 방금 끝났으면 정산을 꺼내 모은다. 방 잠금 안에서 호출하며, 한 판은 한 번만 꺼내진다. */
+    private static void collectSettlement(WaitingRoom room, List<Pending> pending) {
+        if (room.game != null) room.game.takeSettlement().ifPresent(settlement ->
+                pending.add(new Pending(room.id, settlement)));
+    }
+
+    /** 모은 정산을 실행기에 넘긴다. 잠금을 모두 푼 뒤에만 호출한다. */
+    private void submit(List<Pending> pending) {
+        pending.forEach(item -> settlements.submit(item.settlement(),
+                result -> settled(item.roomId(), item.settlement().gameId(), result)));
+    }
+
+    /**
+     * 정산 결과를 방에 표시하고 지급받은 사용자에게 새 잔액을 알린다. 그사이 다음 판이 시작됐으면 방은 건드리지 않는다.
+     * 정산 스레드에서 실행된다.
+     */
+    private void settled(String roomId, UUID gameId, GameSettlementDispatcher.Result result) {
+        List<String> changed = new ArrayList<>();
+        WaitingRoom room = rooms.get(roomId);
+        if (room != null) synchronized (room) {
+            if (room.game != null && room.game.id().equals(gameId)) {
+                room.game.completeSettlement(result.success());
+                room.version++;
+                changed.add(room.id);
+            }
+        }
+        publish(changed);
+        result.balances().forEach((userId, balance) -> events.publishEvent(new WalletChangedEvent(userId, balance)));
     }
 
     /** 끊기지 않았고 자리를 차지한 연결과 같은 연결인지. 다른 탭이나 이전 연결의 요청을 막는다. */

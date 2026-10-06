@@ -56,6 +56,8 @@ class AuthIntegrationTests {
             assertThat(stored.get("password_hash")).isNotEqualTo(PASSWORD);
             assertThat(response.body()).doesNotContain(PASSWORD, "passwordHash");
             assertThat(browser.get("/api/auth/me").statusCode()).isEqualTo(401);
+            assertThat(jdbc.queryForObject("SELECT w.balance FROM wallets w JOIN email_credentials c "
+                    + "ON c.user_id = w.user_id WHERE c.email = ?", Long.class, input.get("email"))).isZero();
         }
     }
 
@@ -116,6 +118,26 @@ class AuthIntegrationTests {
             var response = browser.post("/api/auth/register", Map.of("email", input.get("email"),
                     "password", PASSWORD, "nickname", nickname), true);
             assertThat(response.statusCode()).isEqualTo(400);
+        }
+    }
+
+    @Test
+    void walletReturnsOnlyTheSignedInUsersBalance() throws Exception {
+        var mine = newAccount();
+        var other = newAccount();
+        try (var browser = new AuthClient(port); var anonymous = new AuthClient(port)) {
+            browser.post("/api/auth/register", other, true);
+            var otherId = jdbc.queryForObject("SELECT user_id FROM email_credentials WHERE email = ?",
+                    UUID.class, other.get("email"));
+            jdbc.update("UPDATE wallets SET balance = 99 WHERE user_id = ?", otherId);
+            browser.post("/api/auth/register", mine, true);
+            browser.post("/api/auth/login", mine, true);
+
+            var response = browser.get("/api/wallet?userId=" + otherId);
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(JsonPath.parse(response.body()).read("$.balance", Integer.class)).isZero();
+            assertThat(response.body()).doesNotContain(otherId.toString());
+            AuthClient.assertError(anonymous.get("/api/wallet"), 401, "UNAUTHORIZED");
         }
     }
 
@@ -217,6 +239,7 @@ class AuthIntegrationTests {
             var id = jdbc.queryForObject("SELECT user_id FROM email_credentials WHERE email = ?",
                     UUID.class, input.get("email"));
             jdbc.update("DELETE FROM email_credentials WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM wallets WHERE user_id = ?", id);
             jdbc.update("DELETE FROM users WHERE id = ?", id);
 
             AuthClient.assertError(browser.get("/api/auth/me"), 401, "UNAUTHORIZED");

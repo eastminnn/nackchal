@@ -2,7 +2,12 @@ package com.nackchal.domain.room.service;
 
 import com.nackchal.common.exception.CustomException;
 import com.nackchal.common.exception.error.ErrorCode;
+import com.nackchal.domain.auction.model.AuctionRules;
+import com.nackchal.domain.auction.model.GameSettlement;
+import com.nackchal.domain.game.service.GameSettlementDispatcher;
+import com.nackchal.domain.game.service.GameStart;
 import com.nackchal.domain.room.dto.response.RoomResponse;
+import com.nackchal.domain.wallet.event.WalletChangedEvent;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
 import java.time.Clock;
@@ -26,7 +31,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class RoomServiceTests {
     private final MutableClock clock = new MutableClock();
     private final List<Object> events = new CopyOnWriteArrayList<>();
-    private final RoomService service = new RoomService(clock, events::add);
+    private final FakeGameRecords records = new FakeGameRecords();
+    /** 기본은 제출 즉시 같은 스레드에서 정산한다. deferSettlements()로 나중에 실행할 수 있다. */
+    private final List<Runnable> queuedSettlements = new CopyOnWriteArrayList<>();
+    private volatile boolean deferSettlements;
+    private final RoomService service = new RoomService(clock, events::add, records,
+            new GameSettlementDispatcher(records, task -> {
+                if (deferSettlements) queuedSettlements.add(task);
+                else task.run();
+            }, List.of()), AuctionRules.DEFAULT);
 
     @Test
     void createsCodedRoomAndIdempotentJoinDoesNotChangeVersion() {
@@ -230,7 +243,7 @@ class RoomServiceTests {
                         return observed[0].find(((RoomChangedEvent) event).roomId());
                     }).get(2, TimeUnit.SECONDS);
                 } catch (Exception exception) { throw new AssertionError(exception); }
-            });
+            }, records, new GameSettlementDispatcher(records, Runnable::run, List.of()), AuctionRules.DEFAULT);
             var room = observed[0].create(host);
             observed[0].ready(host, true);
             observed[0].disconnect(host);
@@ -393,6 +406,192 @@ class RoomServiceTests {
         service.ready(host, true);
     }
 
+    @Test
+    void startRecordsGameBeforeTimerStarts() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        records.duringStart = () -> clock.advance(500);
+        Instant before = clock.instant();
+        var room = startedRoom(host, guest);
+
+        var start = records.starts.getFirst();
+        assertThat(start.gameId()).isEqualTo(room.game().gameId());
+        assertThat(start.roomCode()).isEqualTo(room.id());
+        assertThat(start.rulesVersion()).isEqualTo("auction-v1");
+        assertThat(start.startedAt()).isEqualTo(before);
+        assertThat(start.seats()).extracting(GameStart.Seat::userId).containsExactly(host.userId(), guest.userId());
+        assertThat(start.seats()).extracting(GameStart.Seat::nickname).containsExactly(host.nickname(), guest.nickname());
+        assertThat(room.game().phaseEndsAt()).as("타이머는 DB 기록 뒤부터")
+                .isEqualTo(before.plusMillis(500 + 20_000).toEpochMilli());
+        assertThat(room.starting()).isFalse();
+    }
+
+    @Test
+    void failedStartRecordRestoresRoomAndCanRetry() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = service.create(host);
+        service.join(guest, room.id());
+        service.ready(guest, true);
+        records.failStart = true;
+
+        expect(ErrorCode.GAME_START_FAILED, () -> service.startGame(host));
+        var restored = service.find(room.id()).orElseThrow();
+        assertThat(restored.game()).isNull();
+        assertThat(restored.starting()).isFalse();
+        assertThat(restored.players()).filteredOn(player -> player.userId().equals(guest.userId()))
+                .singleElement().satisfies(player -> assertThat(player.ready()).isTrue());
+
+        records.failStart = false;
+        assertThat(service.startGame(host).game().status()).isEqualTo("AUCTION");
+    }
+
+    @Test
+    void startingRoomBlocksEntryAndReadyUntilRecorded() throws Exception {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = service.create(host);
+        service.join(guest, room.id());
+        service.ready(guest, true);
+        records.holdNextStart();
+        try (var pool = Executors.newSingleThreadExecutor()) {
+            var started = pool.submit(() -> service.startGame(host));
+            records.awaitStartEntered();
+
+            assertThat(service.find(room.id()).orElseThrow().starting()).isTrue();
+            assertThat(service.list()).singleElement()
+                    .satisfies(summary -> assertThat(summary.status()).isEqualTo("playing"));
+            expect(ErrorCode.ROOM_IN_GAME, () -> service.join(actor(), room.id()));
+            expect(ErrorCode.GAME_ALREADY_STARTED, () -> service.ready(guest, false));
+            expect(ErrorCode.GAME_ALREADY_STARTED, () -> service.startGame(host));
+
+            records.release();
+            assertThat(started.get(5, TimeUnit.SECONDS).game().status()).isEqualTo("AUCTION");
+        }
+    }
+
+    @Test
+    void leavingWhileStartingAbortsAndSettlesOnce() throws Exception {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = service.create(host);
+        service.join(guest, room.id());
+        service.ready(guest, true);
+        records.holdNextStart();
+        try (var pool = Executors.newSingleThreadExecutor()) {
+            var started = pool.submit(() -> service.startGame(host));
+            records.awaitStartEntered();
+            service.leave(guest);
+            records.release();
+
+            assertThat(started.get(5, TimeUnit.SECONDS).game().status()).isEqualTo("ABORTED");
+            assertThat(service.find(room.id()).orElseThrow().game().settlement()).isEqualTo("COMPLETED");
+        }
+        assertThat(records.settlements).singleElement().satisfies(settlement -> {
+            assertThat(settlement.outcome()).isEqualTo(GameSettlement.Outcome.ABORTED);
+            assertThat(settlement.participants()).filteredOn(GameSettlement.Participant::left)
+                    .extracting(GameSettlement.Participant::userId).containsExactly(guest.userId());
+        });
+    }
+
+    @Test
+    void everyoneLeavingWhileStartingStillClosesTheRecord() throws Exception {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = service.create(host);
+        service.join(guest, room.id());
+        service.ready(guest, true);
+        records.holdNextStart();
+        try (var pool = Executors.newSingleThreadExecutor()) {
+            var started = pool.submit(() -> service.startGame(host));
+            records.awaitStartEntered();
+            service.leave(guest);
+            service.leave(host);
+            records.release();
+            var error = org.assertj.core.api.Assertions.catchThrowable(() -> started.get(5, TimeUnit.SECONDS));
+            assertThat(error).hasCauseInstanceOf(CustomException.class);
+        }
+        assertThat(service.find(room.id())).isEmpty();
+        assertThat(records.settlements).singleElement().satisfies(settlement -> {
+            assertThat(settlement.outcome()).isEqualTo(GameSettlement.Outcome.ABORTED);
+            assertThat(settlement.participants()).allMatch(GameSettlement.Participant::left);
+        });
+    }
+
+    @Test
+    void finishedGameIsSettledOnceAndPublishesWallets() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = startedRoom(host, guest);
+        records.balances = java.util.Map.of(host.userId(), 10L, guest.userId(), 10L);
+        clock.advance(28_000 * 10);
+        service.advanceGames();
+        service.advanceGames();
+
+        assertThat(records.settlements).singleElement().satisfies(settlement -> {
+            assertThat(settlement.gameId()).isEqualTo(room.game().gameId());
+            assertThat(settlement.outcome()).isEqualTo(GameSettlement.Outcome.FINISHED);
+            assertThat(settlement.rounds()).hasSize(10);
+        });
+        assertThat(service.find(room.id()).orElseThrow().game().settlement()).isEqualTo("COMPLETED");
+        assertThat(events).filteredOn(WalletChangedEvent.class::isInstance).containsExactlyInAnyOrder(
+                new WalletChangedEvent(host.userId(), 10), new WalletChangedEvent(guest.userId(), 10));
+    }
+
+    @Test
+    void settlementShowsPendingUntilDoneAndFailedOnError() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = startedRoom(host, guest);
+        deferSettlements = true;
+        records.failSettle = true;
+        clock.advance(28_000 * 10);
+        service.advanceGames();
+        assertThat(service.find(room.id()).orElseThrow().game().settlement()).isEqualTo("PENDING");
+
+        long version = service.find(room.id()).orElseThrow().version();
+        queuedSettlements.forEach(Runnable::run);
+        var failed = service.find(room.id()).orElseThrow();
+        assertThat(failed.game().settlement()).isEqualTo("FAILED");
+        assertThat(failed.version()).isGreaterThan(version);
+        assertThat(events).noneMatch(WalletChangedEvent.class::isInstance);
+    }
+
+    @Test
+    void lateSettlementDoesNotTouchTheNextGame() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = startedRoom(host, guest);
+        deferSettlements = true;
+        clock.advance(28_000 * 10);
+        service.advanceGames();
+        service.ready(guest, true);
+        var next = service.startGame(host).game();
+
+        queuedSettlements.forEach(Runnable::run);
+        var current = service.find(room.id()).orElseThrow().game();
+        assertThat(current.gameId()).isEqualTo(next.gameId());
+        assertThat(current.settlement()).isNull();
+    }
+
+    @Test
+    void everyWayOfLeavingSettlesAbortedGameOnce() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        startedRoom(host, guest);
+        service.removeUser(guest.userId());
+        assertThat(records.settlements).singleElement()
+                .satisfies(settlement -> assertThat(settlement.outcome()).isEqualTo(GameSettlement.Outcome.ABORTED));
+
+        RoomActor otherHost = actor();
+        RoomActor otherGuest = actor();
+        startedRoom(otherHost, otherGuest);
+        service.disconnect(otherGuest);
+        clock.advance(30_000);
+        service.expireDisconnected();
+        assertThat(records.settlements).hasSize(2);
+    }
+
     private RoomResponse startedRoom(RoomActor host, RoomActor... guests) {
         var room = service.create(host);
         for (RoomActor guest : guests) {
@@ -416,7 +615,7 @@ class RoomServiceTests {
     }
 
     private static final class MutableClock extends Clock {
-        private Instant now = Instant.parse("2026-10-02T00:00:00Z");
+        private volatile Instant now = Instant.parse("2026-10-02T00:00:00Z");
         void advance(long millis) { now = now.plusMillis(millis); }
         @Override public ZoneId getZone() { return ZoneOffset.UTC; }
         @Override public Clock withZone(ZoneId zone) { return Clock.fixed(now, zone); }
