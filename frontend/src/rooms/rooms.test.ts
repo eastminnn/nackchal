@@ -90,6 +90,54 @@ describe('wallet', () => {
   });
 });
 
+describe('emotes', () => {
+  beforeEach(() => {
+    vi.stubGlobal('sessionStorage', { setItem: vi.fn(), getItem: vi.fn(() => null), removeItem: vi.fn() });
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+  it('accepts known emotes only', () => {
+    const event = { type: 'EMOTE', userId: peerId, emote: 'SMOKE', startedAt: 1_000, endsAt: 7_000 };
+    expect(serverMessageSchema.parse(event)).toEqual(event);
+    expect(() => serverMessageSchema.parse({ ...event, emote: 'DANCE' })).toThrow();
+  });
+  it('keeps a running emote in local time until it may be used again', () => {
+    vi.setSystemTime(10_000);
+    const { client, handlers } = setup();
+    handlers.onMessage({ type: 'ROOM_STATE', serverTime: 12_000, room: fixture() });
+    handlers.onMessage(
+      serverMessageSchema.parse({
+        type: 'EMOTE',
+        userId: peerId,
+        emote: 'MIDDLE_FINGER',
+        startedAt: 12_000,
+        endsAt: 15_000,
+      }),
+    );
+    expect(client.getSnapshot().emotes[peerId]).toEqual({
+      kind: 'MIDDLE_FINGER',
+      startedAt: 10_000,
+      endsAt: 13_000,
+      availableAt: 14_000,
+    });
+    vi.advanceTimersByTime(3_999);
+    expect(client.getSnapshot().emotes[peerId]).toBeDefined();
+    vi.advanceTimersByTime(1);
+    expect(client.getSnapshot().emotes[peerId]).toBeUndefined();
+  });
+  it('shows emotes on the right resident, mapping my own to me', () => {
+    const user: User = { id: fixture().hostUserId, nickname: '고양이', avatarCode: 'plush-cat' };
+    const emote = { kind: 'SMOKE', startedAt: 1, endsAt: 6_001, availableAt: 6_001 } as const;
+    const view = waitingView(initialState(), fixture(), user, 0, { [userId]: emote });
+    expect(view.players.find((player) => player.id === 'me')?.emote).toEqual(emote);
+    expect(view.players.find((player) => player.id === peerId)?.emote).toBeUndefined();
+  });
+});
+
 describe('shared room state boundary', () => {
   beforeEach(() => {
     const data = new Map<string, string>();
