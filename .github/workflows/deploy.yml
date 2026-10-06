@@ -1,0 +1,50 @@
+name: Deploy
+
+# main에 들어온 커밋이 CI를 통과하면 운영 서버에 배포한다.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 배포는 한 번에 하나씩, 이미 시작한 배포는 취소하지 않는다.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  DEPLOY_HOST: 161.33.13.111
+  SITE_URL: https://nackchal.duckdns.org
+
+jobs:
+  deploy:
+    name: Deploy to Oracle
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      || (github.event_name == 'workflow_run'
+          && github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # 배포 키는 서버에서 deploy/remote-deploy.sh만 실행하도록 제한돼 있다. 서버 호스트 키는 고정한다.
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Ship source and rebuild
+        run: git archive HEAD | ssh -i ~/.ssh/deploy_key -o BatchMode=yes "ubuntu@$DEPLOY_HOST"
+      - name: Check production health
+        run: curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors "$SITE_URL/api/health/readiness"
