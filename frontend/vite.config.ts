@@ -7,12 +7,12 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       proxy: {
-        '/api': { target: backendUrl ?? 'http://127.0.0.1:18080' },
+        '/api': { target: backendUrl ?? 'http://127.0.0.1:18080', ws: true },
       },
     },
     preview: {
       proxy: {
-        '/api': { target: backendUrl ?? 'http://127.0.0.1:18080' },
+        '/api': { target: backendUrl ?? 'http://127.0.0.1:18080', ws: true },
       },
     },
   };
