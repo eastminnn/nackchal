@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CHARACTER_MODELS } from '../data/characters';
-import { OBJECT_KINDS } from '../game/types';
+import { EMOTE_KINDS, type EmoteKind, OBJECT_KINDS } from '../game/types';
 
 const roomId = z
   .string()
@@ -96,6 +96,13 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('AUTH_RENEWED'), expiresAt: z.number().int() }),
   z.object({ type: z.literal('WALLET'), balance: z.number().int().min(0) }),
+  z.object({
+    type: z.literal('EMOTE'),
+    userId,
+    emote: z.enum(EMOTE_KINDS),
+    startedAt: z.number(),
+    endsAt: z.number(),
+  }),
   z.object({ type: z.literal('ROOM_LIST'), version: z.number().int(), rooms: z.array(summary) }),
   z.object({ type: z.literal('ROOM_STATE'), serverTime: z.number(), room: sharedRoomSchema }),
   z.object({ type: z.literal('LEFT'), reason: z.enum(['left', 'expired', 'logout']) }),
@@ -125,6 +132,7 @@ export type RoomCommand =
   | { readonly type: 'SEND_CHAT'; readonly body: string }
   | { readonly type: 'PING' }
   | { readonly type: 'START_GAME' }
+  | { readonly type: 'EMOTE'; readonly emote: EmoteKind }
   | {
       readonly type: 'PLACE_BID';
       readonly gameId: string;

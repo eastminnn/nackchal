@@ -99,6 +99,7 @@ public class RoomCommandRouter {
             case RoomCommand.Ready ready -> roomService.ready(connection.actor, ready.ready());
             case RoomCommand.Chat chat -> roomService.chat(connection.actor, chat.body());
             case RoomCommand.StartGame ignored -> roomService.startGame(connection.actor);
+            case RoomCommand.Emote emote -> roomService.emote(connection.actor, emote.emote());
             case RoomCommand.PlaceBid bid -> roomService.placeBid(connection.actor, bid.gameId(), bid.round(),
                     bid.expectedBidVersion(), bid.amount());
             case RoomCommand.Ping ignored -> {

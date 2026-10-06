@@ -10,6 +10,7 @@ import {
 import { lazy, Suspense, useCallback, useState } from 'react';
 import type { User } from '../auth/api';
 import { ChatLog, OnlineChatComposer } from '../components/game/Chat';
+import { EmoteButtons } from '../components/game/EmoteButtons';
 import { Timer } from '../components/game/Timer';
 import { Button, Money } from '../components/ui/primitives';
 import { MIN_PLAYERS, type RoomState, SELF } from '../game/types';
@@ -260,10 +261,19 @@ export function WaitingRoom({
           </aside>
         )}
         <section className="hud-chat" aria-label="방 채팅">
-          <h2>
-            <ChatCircleIcon size={18} weight="fill" aria-hidden="true" />
-            채팅
-          </h2>
+          <div className="hud-chat-head">
+            <h2>
+              <ChatCircleIcon size={18} weight="fill" aria-hidden="true" />
+              채팅
+            </h2>
+            <EmoteButtons
+              availableAt={state.players.find((player) => player.id === SELF)?.emote?.availableAt}
+              disabled={!online}
+              onEmote={(emote) => {
+                void client.command({ type: 'EMOTE', emote });
+              }}
+            />
+          </div>
           <ChatLog messages={state.chats} />
           <OnlineChatComposer
             disabled={!online}

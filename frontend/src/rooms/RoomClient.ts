@@ -1,4 +1,5 @@
 import { getWallet } from '../auth/api';
+import type { ActiveEmote } from '../game/types';
 import type { ConnectionStatus, RoomCommand, RoomSummary, ServerMessage, SharedRoom } from './protocol';
 import { RoomSocket } from './RoomSocket';
 
@@ -12,7 +13,11 @@ interface Snapshot {
   readonly clockOffset: number;
   /** 내 캐시 잔액. 아직 불러오지 못했으면 null. */
   readonly cash: number | null;
+  /** 사용자 ID별 진행 중인 모션. 다시 쓸 수 있는 시각이 지나면 사라진다. */
+  readonly emotes: Readonly<Record<string, ActiveEmote>>;
 }
+/** 서버와 같은 최소 모션 간격(ms). 동작이 더 길면 동작이 끝나야 다시 쓸 수 있다. */
+const EMOTE_COOLDOWN = 4000;
 interface Pending {
   readonly type: RoomCommand['type'];
   readonly resolve: (accepted: boolean) => void;
@@ -27,11 +32,13 @@ export class RoomClient {
     pending: false,
     clockOffset: 0,
     cash: null,
+    emotes: {},
   };
   private readonly listeners = new Set<() => void>();
   private readonly requests = new Map<string, Pending>();
   private listVersion = -1;
   private restoringRoomId: string | null = null;
+  private readonly emoteTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** WALLET 이벤트마다 증가한다. 그보다 먼저 시작한 조회 결과는 버린다. */
   private walletVersion = 0;
   private readonly socket: RoomSocket;
@@ -79,7 +86,27 @@ export class RoomClient {
   }
   private left() {
     this.clearRestore();
-    this.publish({ room: null, error: '' });
+    for (const timer of this.emoteTimers.values()) clearTimeout(timer);
+    this.emoteTimers.clear();
+    this.publish({ room: null, error: '', emotes: {} });
+  }
+  /** 서버 시각의 모션을 브라우저 시각으로 바꿔 보관하고, 다시 쓸 수 있는 시각에 지운다. */
+  private emote(userId: string, emote: Omit<ActiveEmote, 'availableAt'>) {
+    const startedAt = emote.startedAt - this.state.clockOffset;
+    const endsAt = emote.endsAt - this.state.clockOffset;
+    const availableAt = startedAt + Math.max(EMOTE_COOLDOWN, endsAt - startedAt);
+    clearTimeout(this.emoteTimers.get(userId));
+    this.emoteTimers.set(
+      userId,
+      setTimeout(() => {
+        this.emoteTimers.delete(userId);
+        const { [userId]: _expired, ...rest } = this.state.emotes;
+        this.publish({ emotes: rest });
+      }, availableAt - Date.now()),
+    );
+    this.publish({
+      emotes: { ...this.state.emotes, [userId]: { kind: emote.kind, startedAt, endsAt, availableAt } },
+    });
   }
   command = (command: RoomCommand): Promise<boolean> => {
     if (this.state.status !== 'connected') {
@@ -124,6 +151,13 @@ export class RoomClient {
         this.restoringRoomId = null;
         sessionStorage.setItem(this.storageKey, message.room.id);
         this.publish({ room: message.room, clockOffset: message.serverTime - Date.now() });
+        return;
+      case 'EMOTE':
+        this.emote(message.userId, {
+          kind: message.emote,
+          startedAt: message.startedAt,
+          endsAt: message.endsAt,
+        });
         return;
       case 'WALLET':
         this.walletVersion++;

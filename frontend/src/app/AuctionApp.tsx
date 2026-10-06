@@ -56,8 +56,8 @@ export function AuctionApp({
   const shared = useSyncExternalStore(client.subscribe, client.getSnapshot);
   useEffect(() => client.connect(), [client]);
   const view = useMemo(
-    () => waitingView(state, shared.room, user, shared.clockOffset),
-    [state, shared.room, user, shared.clockOffset],
+    () => waitingView(state, shared.room, user, shared.clockOffset, shared.emotes),
+    [state, shared.room, user, shared.clockOffset, shared.emotes],
   );
   const rooms = useMemo(() => shared.rooms.map(roomInfo), [shared.rooms]);
   const enterRoom = (next: RoomInfo) => {

@@ -5,6 +5,7 @@ import com.nackchal.common.security.event.UserLoggedOutEvent;
 import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
+import com.nackchal.domain.room.model.RoomEmotedEvent;
 import com.nackchal.domain.room.service.RoomService;
 import com.nackchal.domain.wallet.event.WalletChangedEvent;
 import com.nackchal.domain.user.dto.response.UserResponse;
@@ -128,6 +129,16 @@ public class RoomConnections {
                     connection.expiresAt = event.expiresAt();
                     send(connection, Map.of("type", "AUTH_RENEWED", "expiresAt", event.expiresAt().toEpochMilli()));
                 });
+    }
+
+    /** 모션을 그 방에 참가 중인 연결에만 보낸다. 로비와 다른 방에는 보내지 않고 방 목록도 다시 보내지 않는다. */
+    @EventListener
+    public void roomEmoted(RoomEmotedEvent event) {
+        Map<String, Object> emote = Map.of("type", "EMOTE", "userId", event.userId(), "emote", event.emote().name(),
+                "startedAt", event.startedAt().toEpochMilli(), "endsAt", event.endsAt().toEpochMilli());
+        connections.values().stream()
+                .filter(connection -> roomService.roomId(connection.actor).filter(event.roomId()::equals).isPresent())
+                .forEach(connection -> send(connection, emote));
     }
 
     /** 정산으로 캐시가 바뀐 사용자의 열린 연결에만 새 잔액을 보낸다. 다른 참가자에게는 알리지 않는다. */

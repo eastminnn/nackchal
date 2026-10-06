@@ -15,6 +15,15 @@ export const OBJECT_KINDS = [
 export type ObjectKind = (typeof OBJECT_KINDS)[number];
 
 export type ItemKind = 'tomato' | 'can';
+export const EMOTE_KINDS = ['MIDDLE_FINGER', 'SMOKE'] as const;
+export type EmoteKind = (typeof EMOTE_KINDS)[number];
+/** 진행 중인 모션. 시각은 브라우저 시계 기준(ms)이고, availableAt이 지나야 같은 사람이 다시 쓸 수 있다. */
+export interface ActiveEmote {
+  readonly kind: EmoteKind;
+  readonly startedAt: number;
+  readonly endsAt: number;
+  readonly availableAt: number;
+}
 export type Grade = '일반' | '레어' | '에픽' | '전설';
 type Phase = 'lobby' | 'auction' | 'sold' | 'reveal' | 'results';
 export interface Player {
@@ -22,6 +31,7 @@ export interface Player {
   readonly name: string;
   readonly avatar: number;
   readonly balance: number;
+  readonly emote?: ActiveEmote;
 }
 export interface Lot {
   readonly kind: ObjectKind;

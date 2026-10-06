@@ -9,7 +9,9 @@ import com.nackchal.domain.game.service.GameStart;
 import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.wallet.event.WalletChangedEvent;
 import com.nackchal.domain.room.model.RoomActor;
+import com.nackchal.domain.room.model.EmoteKind;
 import com.nackchal.domain.room.model.RoomChangedEvent;
+import com.nackchal.domain.room.model.RoomEmotedEvent;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -590,6 +592,52 @@ class RoomServiceTests {
         clock.advance(30_000);
         service.expireDisconnected();
         assertThat(records.settlements).hasSize(2);
+    }
+
+    @Test
+    void emoteIsAnnouncedOnceWithoutChangingRoomState() {
+        RoomActor host = actor();
+        var room = service.create(host);
+        events.clear();
+        Instant now = clock.instant();
+
+        service.emote(host, EmoteKind.SMOKE);
+
+        assertThat(events).containsExactly(new RoomEmotedEvent(room.id(), host.userId(), EmoteKind.SMOKE, now,
+                now.plusSeconds(6)));
+        assertThat(service.find(room.id()).orElseThrow().version()).isEqualTo(room.version());
+    }
+
+    @Test
+    void emoteCooldownIsFourSecondsOrTheWholeMotion() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = service.create(host);
+        service.join(guest, room.id());
+
+        service.emote(host, EmoteKind.MIDDLE_FINGER);
+        clock.advance(3_999);
+        expect(ErrorCode.EMOTE_RATE_LIMITED, () -> service.emote(host, EmoteKind.SMOKE));
+        service.emote(guest, EmoteKind.SMOKE);
+        clock.advance(1);
+        service.emote(host, EmoteKind.SMOKE);
+
+        clock.advance(5_999);
+        expect(ErrorCode.EMOTE_RATE_LIMITED, () -> service.emote(host, EmoteKind.MIDDLE_FINGER));
+        clock.advance(1);
+        service.emote(host, EmoteKind.MIDDLE_FINGER);
+        assertThat(events).filteredOn(RoomEmotedEvent.class::isInstance).hasSize(4);
+    }
+
+    @Test
+    void onlyActiveMembersCanEmoteAndGamesDoNotBlockIt() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        expect(ErrorCode.ROOM_NOT_JOINED, () -> service.emote(actor(), EmoteKind.SMOKE));
+        startedRoom(host, guest);
+        service.emote(guest, EmoteKind.MIDDLE_FINGER);
+        service.disconnect(host);
+        expect(ErrorCode.ROOM_NOT_JOINED, () -> service.emote(host, EmoteKind.SMOKE));
     }
 
     private RoomResponse startedRoom(RoomActor host, RoomActor... guests) {

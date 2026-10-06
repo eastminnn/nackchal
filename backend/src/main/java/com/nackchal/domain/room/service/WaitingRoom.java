@@ -59,6 +59,7 @@ final class WaitingRoom {
         boolean ready;
         Instant disconnectedAt;
         Instant lastChatAt;
+        Instant nextEmoteAt;
         Member(RoomActor actor, int seat) { this.actor = actor; this.seat = seat; }
     }
 }

@@ -5,6 +5,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CHARACTER_MODELS } from '../data/characters';
 import type { Effect, Player } from '../game/types';
 import { BidPaddle } from './BidPaddle';
+import { EmoteProps } from './EmoteProps';
+import { applyEmote, EMOTE_DURATION, emoteFrame, prepareEmotes } from './emoteMotion';
 import { ModelAsset } from './ModelAsset';
 import { type SeatedModel, seatedModel } from './modelPose';
 import { applyHits, applyThrow, PRANK_IMPACT, PRANK_TIMING, prepareThrow } from './prankMotion';
@@ -32,6 +34,9 @@ export function Resident({
   const filename = CHARACTER_MODELS[player.avatar % CHARACTER_MODELS.length] ?? CHARACTER_MODELS[0];
   const asset = useLoader(GLTFLoader, `/models/animals/${filename}.glb`);
   const model = useMemo(() => seatedModel(asset), [asset]);
+  // 모델이 장면에 붙기 전에 모델 기준 방향으로 모션 자세를 계산한다.
+  const emotePoses = useMemo(() => prepareEmotes(model), [model]);
+  const emote = player.emote;
   const progress = useRef(0);
   const animating = useRef(false);
   const throwing = useRef<{
@@ -44,8 +49,8 @@ export function Resident({
   const invalidate = useThree((state) => state.invalidate);
   const seat = SEATS[index] ?? SEATS[0];
   useEffect(() => {
-    if (reducedMotion || progress.current !== Number(leading) || effects.length > 0) invalidate();
-  }, [leading, reducedMotion, effects, invalidate]);
+    if (reducedMotion || progress.current !== Number(leading) || effects.length > 0 || emote) invalidate();
+  }, [leading, reducedMotion, effects, emote, invalidate]);
   useEffect(() => {
     residents.set(player.id, model);
     return () => {
@@ -71,7 +76,9 @@ export function Resident({
         (reducedMotion ? 0 : PRANK_IMPACT) +
           (effect.item === 'tomato' ? PRANK_TIMING.blush : PRANK_TIMING.wobble),
     );
-    const active = progress.current !== target || tossing || reacting;
+    const emoteAge = emote ? now - emote.startedAt : -1;
+    const emoting = emote !== undefined && emoteAge >= 0 && emoteAge < EMOTE_DURATION[emote.kind];
+    const active = progress.current !== target || tossing || reacting || emoting;
     if (!active && !animating.current) return;
     animating.current = active;
     progress.current =
@@ -89,9 +96,15 @@ export function Resident({
     }
     if (throwing.current)
       applyThrow(throwing.current.poses, toss ? now - throwing.current.effect.at : Infinity, reducedMotion);
+    // 모션은 패들을 들지 않는 왼팔로 한다. 장난 아이템을 던지는 동안에는 던지기 자세가 우선이다.
+    if (!tossing)
+      applyEmote(
+        emotePoses[emote?.kind ?? 'SMOKE'],
+        emote && emoting ? emoteFrame(emote.kind, emoteAge, reducedMotion).arm : 0,
+      );
     applyHits(model, hits, now, reducedMotion);
     model.scene.updateMatrixWorld(true);
-    if (progress.current !== target || reacting || tossing) invalidate();
+    if (progress.current !== target || reacting || tossing || emoting) invalidate();
   }, -2);
   return (
     <group position={seat?.at ?? [0, 0, 0]} rotation={[0, seat?.rotation ?? 0, 0]}>
@@ -100,6 +113,13 @@ export function Resident({
         <primitive object={model.scene} />
       </group>
       {createPortal(<BidPaddle amount={amount} seat={index} />, model.grip)}
+      <EmoteProps
+        model={model}
+        poses={emotePoses}
+        emote={emote}
+        avatar={player.avatar}
+        reducedMotion={reducedMotion}
+      />
       {targetable && (
         <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.75, 0.8, 32]} />

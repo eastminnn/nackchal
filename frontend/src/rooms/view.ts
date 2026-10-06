@@ -1,7 +1,7 @@
 import type { User } from '../auth/api';
 import { CHARACTER_MODELS } from '../data/characters';
 import type { RoomInfo } from '../data/rooms';
-import { type RoomState, SELF } from '../game/types';
+import { type ActiveEmote, type RoomState, SELF } from '../game/types';
 import type { RoomSummary, SharedGame, SharedRoom } from './protocol';
 
 const PHASES: Readonly<Record<SharedGame['status'], RoomState['phase']>> = {
@@ -32,6 +32,7 @@ export function waitingView(
   room: SharedRoom | null,
   user: User,
   clockOffset = 0,
+  emotes: Readonly<Record<string, ActiveEmote>> = {},
 ): RoomState {
   const viewId = (id: string) => (id === user.id ? SELF : id);
   const game = room?.game ?? null;
@@ -48,6 +49,7 @@ export function waitingView(
           name: player.nickname,
           avatar: CHARACTER_MODELS.indexOf(player.avatarCode),
           balance: balance(player.userId),
+          ...(emotes[player.userId] ? { emote: emotes[player.userId] } : {}),
         }))
     : [{ id: SELF, name: user.nickname, avatar: CHARACTER_MODELS.indexOf(user.avatarCode), balance: 0 }];
   const name = (id: string) =>

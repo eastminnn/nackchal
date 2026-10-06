@@ -28,6 +28,58 @@
 .hud-chat h2 svg {
   color: var(--plush-accent);
 }
+.hud-chat-head {
+  display: flex;
+  align-items: center;
+  padding-right: 14px;
+}
+.hud-emotes {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+}
+.hud-emotes legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.hud-emote {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 30px;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--plush-line);
+  border-radius: 10px;
+}
+.hud-emote:hover:not(:disabled) {
+  background: #fff;
+}
+.hud-emote:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.hud-emote small {
+  position: absolute;
+  right: -4px;
+  bottom: -5px;
+  min-width: 16px;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-weight: 750;
+  color: #fff;
+  background: var(--plush-ink);
+  border-radius: 8px;
+}
 .hud-chat .chat-log {
   flex: 1;
   min-height: 0;
