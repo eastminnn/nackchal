@@ -21,9 +21,9 @@ try {
     await expect(page.locator('.profile-account-name')).toHaveText('동민');
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
     const roomId = (await page.locator('.hud-room small').innerText()).replace('#', '');
-    const waiting = page.getByRole('button', { name: '준비하기', exact: true });
-    await expect(waiting).toBeEnabled();
-    await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
+    const waiting = page.getByRole('button', { name: '경매 시작하기' });
+    await expect(waiting).toBeDisabled();
+    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toHaveCount(0);
     await expect(page.locator('.character-label')).toHaveCount(1);
     await expect(page.locator('.character-name strong')).toHaveText('동민');
     await expect(page.locator('.character-name')).toBeVisible();
@@ -47,8 +47,8 @@ try {
     }, { message: 'Adding a bubble keeps the name anchored above the head' }).toBeLessThan(2);
     await page.screenshot({ path: '.qa/desktop/chat-' + width + '.png' });
     await page.waitForTimeout(7100);
-    await expect(waiting).toBeEnabled();
-    await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
+    await expect(waiting).toBeDisabled();
+    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toHaveCount(0);
     await expect(page.locator('.character-label')).toHaveCount(1);
     await expect(page.locator('.character-speech')).toHaveCount(0);
     await expect.poll(async () => {
@@ -67,8 +67,8 @@ try {
     await page.getByRole('button', { name: /토마토 보유 .*장착/ }).click();
     await page.locator('.directory-loadout summary').click();
     await page.getByRole('button', { name: '방 만들기', exact: true }).click();
-    await expect(waiting).toBeEnabled();
-    await expect(page.getByRole('button', { name: '경매 시작하기' })).toHaveCount(0);
+    await expect(waiting).toBeDisabled();
+    await expect(page.getByRole('button', { name: '준비하기', exact: true })).toHaveCount(0);
     await expect(page.locator('.round-counter')).toHaveText('1 / 4명');
     await expect(page.locator('.character-label')).toHaveCount(1);
     await expect(page.locator('.chat-log')).not.toContainText('함께할 준비 완료');
