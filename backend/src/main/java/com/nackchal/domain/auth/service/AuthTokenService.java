@@ -77,7 +77,8 @@ public class AuthTokenService {
         random.nextBytes(bytes);
         String refreshToken = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         refreshTokenRepository.save(new RefreshToken(userId, hash(refreshToken), expiresAt));
-        return new AuthTokens(jwtTokenProvider.issue(userId), refreshToken, expiresAt);
+        String accessToken = jwtTokenProvider.issue(userId);
+        return new AuthTokens(userId, accessToken, jwtTokenProvider.expiresAt(accessToken), refreshToken, expiresAt);
     }
 
     private String hash(String token) {

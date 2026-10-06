@@ -11,7 +11,7 @@ import org.springframework.web.socket.WebSocketSession;
 final class RoomSocketConnection {
     final WebSocketSession session;
     final RoomActor actor;
-    final Instant expiresAt;
+    volatile Instant expiresAt;
     final Map<UUID, Reply> replies = new LinkedHashMap<>();
     volatile Instant lastSeen;
     Instant rateWindow;

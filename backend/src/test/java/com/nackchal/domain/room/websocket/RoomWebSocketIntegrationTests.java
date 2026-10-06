@@ -207,6 +207,27 @@ class RoomWebSocketIntegrationTests {
     }
 
     @Test
+    void tokenRefreshExtendsOpenSocketsOfSameUserOnly() throws Exception {
+        try (var host = account("방장"); var other = account("손님")) {
+            var first = host.connect();
+            var second = host.connect();
+            var unrelated = other.connect();
+            long connectedUntil = first.welcome.path("authExpiresAt").longValue();
+            assertThat(connectedUntil).isGreaterThan(System.currentTimeMillis());
+
+            Thread.sleep(1100);
+            assertThat(host.post("/api/auth/refresh", Map.of()).statusCode()).isEqualTo(204);
+            for (var socket : List.of(first, second)) {
+                var renewed = socket.await(node -> type(node, "AUTH_RENEWED"));
+                assertThat(renewed.path("expiresAt").longValue()).isGreaterThan(connectedUntil);
+            }
+            unrelated.barrier();
+            assertThat(unrelated.history).noneMatch(node -> type(node, "AUTH_RENEWED"));
+            first.barrier();
+        }
+    }
+
+    @Test
     void httpLogoutImmediatelyClosesSocketAndRemovesParticipant() throws Exception {
         try (var host = account("방장"); var guest = account("손님")) {
             var first = host.connect();
