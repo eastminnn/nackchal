@@ -122,6 +122,26 @@ class AuthIntegrationTests {
     }
 
     @Test
+    void walletReturnsOnlyTheSignedInUsersBalance() throws Exception {
+        var mine = newAccount();
+        var other = newAccount();
+        try (var browser = new AuthClient(port); var anonymous = new AuthClient(port)) {
+            browser.post("/api/auth/register", other, true);
+            var otherId = jdbc.queryForObject("SELECT user_id FROM email_credentials WHERE email = ?",
+                    UUID.class, other.get("email"));
+            jdbc.update("UPDATE wallets SET balance = 99 WHERE user_id = ?", otherId);
+            browser.post("/api/auth/register", mine, true);
+            browser.post("/api/auth/login", mine, true);
+
+            var response = browser.get("/api/wallet?userId=" + otherId);
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(JsonPath.parse(response.body()).read("$.balance", Integer.class)).isZero();
+            assertThat(response.body()).doesNotContain(otherId.toString());
+            AuthClient.assertError(anonymous.get("/api/wallet"), 401, "UNAUTHORIZED");
+        }
+    }
+
+    @Test
     void loginIssuesJwtCookiesAndReturnsOnlyOwnProfileWithoutSession() throws Exception {
         var input = newAccount();
         try (var browser = new AuthClient(port)) {

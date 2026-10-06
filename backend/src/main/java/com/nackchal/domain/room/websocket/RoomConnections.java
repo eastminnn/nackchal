@@ -6,6 +6,7 @@ import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
 import com.nackchal.domain.room.service.RoomService;
+import com.nackchal.domain.wallet.event.WalletChangedEvent;
 import com.nackchal.domain.user.dto.response.UserResponse;
 import java.io.IOException;
 import java.time.Clock;
@@ -127,6 +128,13 @@ public class RoomConnections {
                     connection.expiresAt = event.expiresAt();
                     send(connection, Map.of("type", "AUTH_RENEWED", "expiresAt", event.expiresAt().toEpochMilli()));
                 });
+    }
+
+    /** 정산으로 캐시가 바뀐 사용자의 열린 연결에만 새 잔액을 보낸다. 다른 참가자에게는 알리지 않는다. */
+    @EventListener
+    public void walletChanged(WalletChangedEvent event) {
+        connections.values().stream().filter(connection -> connection.actor.userId().equals(event.userId()))
+                .forEach(connection -> send(connection, Map.of("type", "WALLET", "balance", event.balance())));
     }
 
     /** 1초마다 인증 만료(4401)·응답 없는 연결(35초)을 닫고 재접속 유예가 끝난 자리를 정리한다. */

@@ -1,11 +1,15 @@
 package com.nackchal.domain.wallet.service;
 
+import com.nackchal.common.exception.CustomException;
+import com.nackchal.common.exception.error.ErrorCode;
 import com.nackchal.domain.wallet.entity.CashTransaction;
 import com.nackchal.domain.wallet.entity.Wallet;
 import com.nackchal.domain.wallet.repository.CashTransactionRepository;
 import com.nackchal.domain.wallet.repository.WalletRepository;
 import java.time.Clock;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class WalletService {
 
+    private static final Logger log = LoggerFactory.getLogger(WalletService.class);
+
     private final WalletRepository walletRepository;
     private final CashTransactionRepository cashTransactionRepository;
     private final Clock clock;
@@ -26,6 +32,17 @@ public class WalletService {
         this.walletRepository = walletRepository;
         this.cashTransactionRepository = cashTransactionRepository;
         this.clock = clock;
+    }
+
+    /**
+     * 현재 잔액. 지갑은 가입·마이그레이션으로 항상 있어야 하므로 없으면 0으로 만들지 않고 서버 오류로 다룬다.
+     * @throws CustomException INTERNAL_SERVER_ERROR
+     */
+    public long balance(UUID userId) {
+        return walletRepository.findById(userId).map(Wallet::getBalance).orElseThrow(() -> {
+            log.error("Wallet missing for user {}", userId);
+            return new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
+        });
     }
 
     /** 잔액 0인 지갑을 만든다. 가입 트랜잭션 안에서만 호출한다. */
