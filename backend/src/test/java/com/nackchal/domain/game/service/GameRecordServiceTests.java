@@ -162,13 +162,23 @@ class GameRecordServiceTests {
     @Test
     void startupCleanupAbortsRunningGames() {
         start();
-        assertThat(records.abortUnfinished(END)).isGreaterThanOrEqualTo(1);
+        assertThat(records.abortUnfinished(START.plusMillis(1), END)).isGreaterThanOrEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT status FROM games WHERE id = ?", String.class, gameId))
                 .isEqualTo("ABORTED");
         assertThat(jdbc.queryForList("SELECT participation_status FROM game_participants WHERE game_id = ?",
                 String.class, gameId)).containsOnly("ABORTED");
         assertThat(records.settle(finished())).as("정리된 판은 정산하지 않음").isEmpty();
         assertThat(wallet(a)).isZero();
+    }
+
+    @Test
+    void startupCleanupLeavesGamesStartedByThisRun() {
+        start();
+        // 서버가 뜬 시각(START)과 같거나 그 뒤에 시작한 판은 이번 실행의 메모리에 살아 있다.
+        records.abortUnfinished(START, END);
+        assertThat(jdbc.queryForObject("SELECT status FROM games WHERE id = ?", String.class, gameId))
+                .isEqualTo("RUNNING");
+        assertThat(records.settle(finished())).containsOnlyKeys(a, b);
     }
 
     private void start() {

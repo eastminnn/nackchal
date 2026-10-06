@@ -101,12 +101,13 @@ public class GameRecordService implements GameRecords {
     }
 
     /**
-     * 서버 기동 시 남은 RUNNING 판을 중단으로 정리한다. 서버 1대 구조라 기동 시점의 진행 중 판은
-     * 메모리 상태가 이미 사라진 기록이다.
+     * 이전 실행이 남긴 RUNNING 판을 중단으로 정리한다. 서버 1대 구조라 이번 실행이 시작되기 전의 진행 중 판은
+     * 메모리 상태가 이미 사라진 기록이다. 웹 서버는 기동 완료 이벤트보다 먼저 요청을 받으므로, 이번 실행에서
+     * 시작한 판까지 지우지 않도록 startedBefore 이전에 시작한 판만 고른다.
      * @return 정리한 판 수
      */
-    public int abortUnfinished(Instant now) {
-        List<Game> running = gameRepository.findByStatus(Game.Status.RUNNING);
+    public int abortUnfinished(Instant startedBefore, Instant now) {
+        List<Game> running = gameRepository.findByStatusAndStartedAtBefore(Game.Status.RUNNING, startedBefore);
         running.forEach(game -> {
             participantRepository.findByGameId(game.getId()).stream()
                     .filter(participant -> participant.getStatus() == GameParticipant.Status.ACTIVE)

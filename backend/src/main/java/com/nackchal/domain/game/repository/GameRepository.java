@@ -2,6 +2,7 @@ package com.nackchal.domain.game.repository;
 
 import com.nackchal.domain.game.entity.Game;
 import jakarta.persistence.LockModeType;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,5 +18,5 @@ public interface GameRepository extends JpaRepository<Game, UUID> {
     Optional<Game> findForUpdate(UUID id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    List<Game> findByStatus(Game.Status status);
+    List<Game> findByStatusAndStartedAtBefore(Game.Status status, Instant startedAt);
 }
