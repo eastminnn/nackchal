@@ -1,6 +1,7 @@
 package com.nackchal.domain.auction.model;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,6 +17,12 @@ public record GameSettlement(UUID gameId, Outcome outcome, Instant endedAt, List
     public GameSettlement {
         participants = List.copyOf(participants);
         rounds = List.copyOf(rounds);
+    }
+
+    /** 시작 기록만 남고 경매를 열지 못한 판. 모두 이탈로 보고 보상 없이 닫는다. */
+    public static GameSettlement abandoned(UUID gameId, Collection<UUID> userIds, Instant now) {
+        return new GameSettlement(gameId, Outcome.ABORTED, now,
+                userIds.stream().map(userId -> new Participant(userId, 0, true, now, null, 0)).toList(), List.of());
     }
 
     /** 참가자 결과. 이탈자는 left가 true이고 rank가 null, reward가 0이다. */
