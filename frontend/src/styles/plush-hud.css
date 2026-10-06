@@ -44,3 +44,38 @@
 .hud-reveal {
   border: 1px solid var(--plush-line);
 }
+
+.lobby-connection {
+  font-size: 12px;
+  color: var(--secondary);
+}
+.room-participants {
+  position: absolute;
+  top: 80px;
+  right: 32px;
+  width: 240px;
+  padding: 16px;
+  border-radius: var(--r3);
+  background: var(--plush-paper);
+  color: var(--plush-ink);
+  font-size: 12px;
+  pointer-events: auto;
+}
+.room-participants ul {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.room-participants li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.room-participants li strong {
+  overflow-wrap: anywhere;
+}
+.room-participants li span {
+  white-space: nowrap;
+}

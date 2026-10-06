@@ -19,7 +19,9 @@ export function Lobby({
   rooms,
   onEnter,
   onCreate,
+  disabled = false,
 }: {
+  readonly disabled?: boolean;
   readonly user: User;
   readonly state: RoomState;
   readonly server: GameTransport;
@@ -58,7 +60,7 @@ export function Lobby({
           </section>
           <details className="directory-loadout">
             <summary>
-              장난 주머니 <span>{state.loadout.length} / 3</span>
+              장난 주머니 · 미리보기 <span>{state.loadout.length} / 3</span>
             </summary>
             <Loadout state={state} server={server} />
           </details>
@@ -72,7 +74,7 @@ export function Lobby({
                 함께할 방 찾기 <small>{filtered.length}</small>
               </h1>
             </div>
-            <Button variant="secondary" onClick={() => onCreate(nickname)}>
+            <Button variant="secondary" disabled={disabled} onClick={() => onCreate(nickname)}>
               <PlusIcon size={17} />방 만들기
             </Button>
           </div>
@@ -122,7 +124,7 @@ export function Lobby({
                 </div>
                 <Button
                   variant={room.status === 'waiting' ? 'primary' : 'secondary'}
-                  disabled={room.status !== 'waiting'}
+                  disabled={disabled || room.status !== 'waiting'}
                   aria-label={`${room.name} ${room.status === 'waiting' ? '입장' : ROOM_STATUS[room.status]}`}
                   onClick={() => onEnter(room, nickname)}
                 >
@@ -161,8 +163,8 @@ export function Lobby({
             )}
           </div>
           <p className="directory-note">
-            온라인 플레이는 준비 중이에요. 지금은 방 화면을 미리 볼 수 있어요.
-            <span>한 판 10라운드 · 시작 $100</span>
+            최대 4명이 함께 준비하고 채팅할 수 있어요.
+            <span>경매 진행 기능은 준비 중</span>
           </p>
         </section>
       </div>
