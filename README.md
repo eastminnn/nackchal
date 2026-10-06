@@ -90,7 +90,7 @@ docker compose up -d --build --no-deps frontend
 - `docker-compose.prod.yml`이 Caddy를 추가합니다. 외부에는 Caddy의 80·443만 열리고, Let's Encrypt 인증서를 자동으로 받고 갱신합니다. HTTP는 HTTPS로 넘깁니다. PostgreSQL·백엔드·Nginx 포트는 서버의 127.0.0.1에만 열립니다.
 - Nginx는 Docker 내부망에서 온 `X-Forwarded-For`를 실제 클라이언트 IP로 사용합니다. 그래서 가입·로그인 빈도 제한이 Caddy 뒤에서도 사용자 IP별로 동작합니다.
 - Oracle 보안 목록과 서버 iptables에서 TCP 80·443을 허용합니다. iptables 규칙은 `netfilter-persistent`로 저장돼 재부팅 후에도 유지됩니다.
-- 서버의 `~/nackchal/.env`는 서버에서만 만들고 권한은 600입니다. `POSTGRES_PASSWORD`와 `JWT_SECRET`은 서버에서 `openssl`로 생성했고 레포·로컬에는 없습니다. 운영 값은 `AUTH_COOKIE_SECURE=true`, `ROOM_ALLOWED_ORIGINS=https://nackchal.duckdns.org`, `SITE_DOMAIN=nackchal.duckdns.org`입니다.
+- 서버의 `~/nackchal/.env`는 서버에서만 만들고 권한은 600입니다. 항목은 [`deploy/production.env.example`](deploy/production.env.example)에 있으며 로컬용 `.env.example`과 값이 다릅니다. `POSTGRES_PASSWORD`와 `JWT_SECRET`은 서버에서 `openssl`로 생성했고 레포·로컬에는 없습니다. 운영 값은 `AUTH_COOKIE_SECURE=true`, `ROOM_ALLOWED_ORIGINS=https://nackchal.duckdns.org`, `SITE_DOMAIN=nackchal.duckdns.org`입니다.
 
 `main`에 들어온 커밋은 CI가 통과하면 `.github/workflows/deploy.yml`이 자동으로 배포합니다. 소스를 `git archive`로 묶어 SSH로 보내고, 같은 커밋의 `deploy/remote-deploy.sh`를 서버에서 실행합니다. 스크립트는 `.env`를 남긴 채 소스를 동기화하고(레포에서 지운 파일은 서버에서도 지움) 다시 빌드한 뒤, 컨테이너가 정상 상태가 될 때까지 기다립니다. 마지막으로 워크플로가 `/api/health/readiness`를 확인합니다. GitHub Secrets에는 서버 SSH 개인키(`DEPLOY_SSH_KEY`)와 호스트 키(`DEPLOY_KNOWN_HOSTS`)만 있고 DB 비밀번호와 `JWT_SECRET`은 서버 `.env`에만 있습니다. Actions 화면에서 Deploy 워크플로를 `main`으로 직접 실행할 수도 있습니다.
 
