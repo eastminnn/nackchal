@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 운영 서버에서 GitHub Actions 배포 키의 강제 명령으로 실행된다. 이 키로는 이 스크립트만 실행할 수 있다.
+# 운영 서버에서 실행하는 배포 스크립트. Deploy 워크플로가 배포할 커밋의 이 파일을 SSH로 넘겨 실행한다.
 # 표준 입력으로 받은 소스 tar(git archive)를 ~/nackchal에 반영하고 다시 빌드한다.
 # 서버의 .env와 Docker volume(DB, 인증서)은 그대로 둔다.
 set -euo pipefail
