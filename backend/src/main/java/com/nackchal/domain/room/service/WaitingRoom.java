@@ -1,0 +1,47 @@
+package com.nackchal.domain.room.service;
+
+import com.nackchal.domain.room.dto.response.RoomChatResponse;
+import com.nackchal.domain.room.dto.response.RoomMemberResponse;
+import com.nackchal.domain.room.dto.response.RoomResponse;
+import com.nackchal.domain.room.model.RoomActor;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.UUID;
+
+/** 서비스가 이 인스턴스의 잠금을 잡은 동안만 읽고 변경하는 대기실 상태. */
+final class WaitingRoom {
+    final String id;
+    final String name;
+    final LinkedHashMap<UUID, Member> members = new LinkedHashMap<>();
+    final List<RoomChatResponse> chats = new ArrayList<>();
+    long version = 1;
+    long chatSequence;
+
+    WaitingRoom(String id, String name) { this.id = id; this.name = name; }
+
+    boolean occupied(int seat) {
+        return members.values().stream().anyMatch(member -> member.seat == seat);
+    }
+
+    UUID host() {
+        return members.isEmpty() ? null : members.keySet().iterator().next();
+    }
+
+    RoomResponse snapshot() {
+        return new RoomResponse(id, name, host(), RoomService.MAX_PLAYERS, version,
+                members.values().stream().map(member -> new RoomMemberResponse(member.actor.userId(),
+                        member.actor.nickname(), member.actor.avatarCode(), member.seat, member.ready,
+                        member.disconnectedAt == null)).toList(), List.copyOf(chats));
+    }
+
+    static final class Member {
+        RoomActor actor;
+        final int seat;
+        boolean ready;
+        Instant disconnectedAt;
+        Instant lastChatAt;
+        Member(RoomActor actor, int seat) { this.actor = actor; this.seat = seat; }
+    }
+}
