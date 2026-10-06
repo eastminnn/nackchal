@@ -11,8 +11,10 @@ import com.nackchal.domain.game.service.GameStart;
 import com.nackchal.domain.room.dto.response.RoomChatResponse;
 import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.dto.response.RoomSummaryResponse;
+import com.nackchal.domain.room.model.EmoteKind;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
+import com.nackchal.domain.room.model.RoomEmotedEvent;
 import com.nackchal.domain.room.service.WaitingRoom.Member;
 import com.nackchal.domain.wallet.event.WalletChangedEvent;
 import java.security.SecureRandom;
@@ -214,6 +216,25 @@ public class RoomService {
             if (room.chats.size() > 30) room.chats.removeFirst();
             return true;
         });
+    }
+
+    /**
+     * 모션을 시작한다. 방 상태는 바꾸지 않으므로 version을 올리지 않고, 잠금을 푼 뒤 그 방 참가자에게만 알린다.
+     * 대기실·게임 중 언제든 쓸 수 있으며 같은 사람은 4초와 동작 길이 중 긴 쪽이 지나야 다시 쓸 수 있다.
+     * @throws CustomException ROOM_NOT_JOINED, EMOTE_RATE_LIMITED
+     */
+    public void emote(RoomActor actor, EmoteKind emote) {
+        RoomEmotedEvent[] emoted = new RoomEmotedEvent[1];
+        mutate(actor, false, (room, member) -> {
+            Instant now = clock.instant();
+            if (member.nextEmoteAt != null && now.isBefore(member.nextEmoteAt)) {
+                throw error(ErrorCode.EMOTE_RATE_LIMITED);
+            }
+            member.nextEmoteAt = now.plus(emote.cooldown());
+            emoted[0] = new RoomEmotedEvent(room.id, actor.userId(), emote, now, now.plus(emote.duration()));
+            return false;
+        });
+        events.publishEvent(emoted[0]);
     }
 
     /**

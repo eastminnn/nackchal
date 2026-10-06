@@ -300,6 +300,34 @@ class RoomWebSocketIntegrationTests {
     }
 
     @Test
+    void emotesReachOnlyTheSameRoomAndAreRateLimited() throws Exception {
+        try (var host = account("방장"); var guest = account("손님"); var other = account("옆방"); var lobby = account("로비")) {
+            var first = host.connect();
+            var second = guest.connect();
+            var neighbour = other.connect();
+            var idle = lobby.connect();
+            String roomId = create(first);
+            join(second, roomId);
+            create(neighbour);
+
+            second.accept("EMOTE", Map.of("emote", "SMOKE", "userId", host.userId));
+            var emote = first.await(node -> type(node, "EMOTE"));
+            assertThat(emote.path("userId").stringValue()).isEqualTo(guest.userId);
+            assertThat(emote.path("emote").stringValue()).isEqualTo("SMOKE");
+            assertThat(emote.path("endsAt").longValue() - emote.path("startedAt").longValue()).isEqualTo(6_000);
+            assertThat(second.await(node -> type(node, "EMOTE")).path("userId").stringValue()).isEqualTo(guest.userId);
+
+            second.reject("EMOTE", Map.of("emote", "MIDDLE_FINGER"), 429, "EMOTE_RATE_LIMITED");
+            second.reject("EMOTE", Map.of("emote", "DANCE"), 400, null);
+            for (var outsider : List.of(neighbour, idle)) {
+                outsider.barrier();
+                assertThat(outsider.history).noneMatch(node -> type(node, "EMOTE"));
+                assertThat(outsider.pending).noneMatch(node -> type(node, "EMOTE"));
+            }
+        }
+    }
+
+    @Test
     void tokenRefreshExtendsOpenSocketsOfSameUserOnly() throws Exception {
         try (var host = account("방장"); var other = account("손님")) {
             var first = host.connect();

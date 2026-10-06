@@ -39,6 +39,7 @@ public enum ErrorCode {
     ROOM_SERVER_FULL(HttpStatus.SERVICE_UNAVAILABLE, "ROOM_SERVER_FULL", "지금은 방을 더 만들 수 없어요. 잠시 후 다시 시도해 주세요."),
     INVALID_CHAT(HttpStatus.BAD_REQUEST, "INVALID_CHAT", "채팅은 1~100자로 입력해 주세요."),
     CHAT_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "CHAT_RATE_LIMITED", "채팅은 1초에 한 번씩 보낼 수 있어요."),
+    EMOTE_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "EMOTE_RATE_LIMITED", "잠시 후 다시 할 수 있어요."),
     ROOM_IN_GAME(HttpStatus.CONFLICT, "ROOM_IN_GAME", "게임이 진행 중인 방이에요. 끝난 뒤 입장해 주세요."),
 
     // 게임 시작과 입찰
