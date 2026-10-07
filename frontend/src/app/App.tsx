@@ -32,7 +32,15 @@ export function App() {
       case 'anonymous':
         return <Login onLogin={establish} />;
       case 'authenticated':
-        return <AuctionApp key={auth.user.id} user={auth.user} arriving={arriving} onLogout={end} />;
+        return (
+          <AuctionApp
+            key={auth.user.id}
+            user={auth.user}
+            arriving={arriving}
+            onLogout={end}
+            onUserChange={establish}
+          />
+        );
       default:
         return auth satisfies never;
     }

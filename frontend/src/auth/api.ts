@@ -18,6 +18,7 @@ export const registrationSchema = z.object({
     .string()
     .trim()
     .regex(/^[\p{L}\p{N}_-]{1,12}$/u, '닉네임은 1~12자의 글자, 숫자, _ 또는 -로 적어 주세요.'),
+  avatarCode: z.enum(CHARACTER_MODELS),
 });
 export type Registration = Readonly<z.infer<typeof registrationSchema>>;
 export type Login = Readonly<Pick<Registration, 'email' | 'password'>>;
@@ -156,6 +157,25 @@ export function buyItem(itemCode: ShopItem['code'], quantity: number, requestId:
       );
     }
     return purchaseSchema.parse(await response.json());
+  });
+}
+
+/** 내 캐릭터를 바꾼다. 방 안에서는 서버가 거절하고, 그 이유를 그대로 담아 던진다. */
+export function changeAvatar(avatarCode: User['avatarCode']): Promise<User> {
+  return request(async () => {
+    const response = await api.patch('/api/users/me/avatar', {
+      json: { avatarCode },
+      headers: await csrfHeaders(),
+      throwHttpErrors: false,
+    });
+    if (!response.ok) {
+      const body = serverErrorSchema.safeParse(await response.json().catch(() => null));
+      throw new AuthError(
+        response.status,
+        body.success ? body.data.message : '캐릭터를 바꾸지 못했어요. 잠시 후 다시 시도해 주세요.',
+      );
+    }
+    return userSchema.parse(await response.json());
   });
 }
 
