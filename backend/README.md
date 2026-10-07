@@ -72,7 +72,7 @@ com.nackchal
 
 코드 작성 방식도 참고 프로젝트를 따릅니다. 생성자로 의존성을 주입하고, DB 서비스는 클래스에 읽기 전용 트랜잭션을 선언한 뒤 쓰기 메서드에 `@Transactional`을 붙입니다. 메모리 기반 `RoomService`는 사용자별 입장 잠금과 방별 잠금으로 상태를 보호합니다. 게임 시작·정산의 DB 트랜잭션은 이 잠금을 쥐지 않은 상태에서만 실행합니다. DTO는 record와 `from`·`of` 팩터리를 사용합니다. 클래스 주석에는 역할을 짧게 적고 서비스의 업무 예외는 `@throws`로 안내합니다. 본문 주석에는 동시 가입 충돌, CSRF, 오류 응답처럼 코드만으로 의도를 알기 어려운 이유를 남깁니다.
 
-`V1__create_accounts.sql`은 기존 마이그레이션으로 유지합니다. `V2__rename_users_and_add_refresh_tokens.sql`이 `accounts`를 `users`, `email_credentials.account_id`를 `user_id`로 변경하고 `refresh_tokens`를 추가합니다. 기존 UUID·프로필·인증 정보는 유지됩니다. 가입 시 `users`와 `email_credentials`를 같은 트랜잭션에 저장하며, 이메일은 소문자·앞뒤 공백 제거 후 유니크 제약으로 보호합니다. `V3__create_wallets_and_games.sql`은 `wallets`, `cash_transactions`, `games`, `game_participants`, `round_results`를 추가하고 기존 사용자에게 잔액 0인 지갑을 만듭니다. 가입은 지갑도 같은 트랜잭션에 저장합니다. 적용한 마이그레이션은 수정하지 않고 다음 버전을 추가합니다. Hibernate는 `ddl-auto=validate`입니다.
+`V1__create_accounts.sql`은 기존 마이그레이션으로 유지합니다. `V2__rename_users_and_add_refresh_tokens.sql`이 `accounts`를 `users`, `email_credentials.account_id`를 `user_id`로 변경하고 `refresh_tokens`를 추가합니다. 기존 UUID·프로필·인증 정보는 유지됩니다. 가입 시 `users`와 `email_credentials`를 같은 트랜잭션에 저장하며, 이메일은 소문자·앞뒤 공백 제거 후 유니크 제약으로 보호합니다. `V3__create_wallets_and_games.sql`은 `wallets`, `cash_transactions`, `games`, `game_participants`, `round_results`를 추가하고 기존 사용자에게 잔액 0인 지갑을 만듭니다. 가입은 지갑도 같은 트랜잭션에 저장합니다. `V4__create_shop_and_items.sql`은 `item_catalog`(토마토 3, 깡통 2), `inventories`, `shop_purchases`, `item_uses`를 추가하고, 원장이 게임 보상(양수, 게임 ID)과 구매 차감(음수, 구매 ID)만 허용하도록 제약을 바꿉니다. 적용한 마이그레이션은 수정하지 않고 다음 버전을 추가합니다. Hibernate는 `ddl-auto=validate`입니다.
 
 ## 인증 API
 
@@ -114,6 +114,9 @@ Vite와 Nginx의 `/api` 프록시를 통해 같은 출처에서 호출합니다.
 | 서버 → 클라이언트 | `AUTH_RENEWED` | 토큰 갱신으로 늘어난 연결 인증 만료 시각 |
 | 클라이언트 → 서버 | `EMOTE` | 무료 모션 `MIDDLE_FINGER`(3초), `SMOKE`(6초) |
 | 서버 → 클라이언트 | `EMOTE` | 같은 방 참가자에게만. `userId`, `emote`, `startedAt`, `endsAt`(서버 시각 ms) |
+| 클라이언트 → 서버 | `USE_ITEM` | 게임 중 `item`(`tomato`, `can`)을 `targetUserId`에게 던짐 |
+| 서버 → 클라이언트 | `ITEM_EFFECT` | 같은 방 참가자에게만. `userId`, `targetUserId`, `item`, `at` |
+| 서버 → 클라이언트 | `INVENTORY` | 던진 본인에게만. 남은 `quantity`, 이번 판 남은 `gameRemaining` |
 
 방은 6자리 대문자 영숫자 코드로 식별하며 최대 4명, 서버 전체 최대 1,000개입니다. 경매는 연결된 참가자 2명 이상일 때 시작할 수 있습니다. 같은 계정의 여러 로비 연결은 허용하지만 한 방·한 활성 연결만 참여할 수 있습니다. 동일 연결의 같은 방 재입장은 멱등이며 다른 활성 탭의 입장은 거절하고 강제 인계하지 않습니다.
 
@@ -152,6 +155,12 @@ Vite와 Nginx는 WebSocket 업그레이드를 전달합니다. 허용 목록은 
 
 게임 머니·입찰·타이머는 메모리에만 있습니다. 캐시는 게임 순위로만 받으며 가입 보상은 없습니다. 인증된 `GET /api/wallet`은 JWT의 사용자 잔액만 `{ "balance": number }`로 돌려줍니다.
 
+## 상점과 장난 아이템
+
+인증된 `GET /api/shop`은 판매 중인 아이템과 내 보유 수량을, `POST /api/shop/purchases { itemCode, quantity(1~10), requestId }`는 새 잔액과 그 아이템의 새 보유 수량을 돌려줍니다. 가격은 서버 `item_catalog`로 계산하며, 구매 기록·원장 차감·잔액 차감·인벤토리 증가를 한 트랜잭션에서 처리합니다. 잔액은 금액 이상일 때만 빼므로 동시 구매도 음수를 만들지 않고, 같은 `requestId`는 한 번만 처리합니다(본문이 다르면 409). 커밋 후 `WALLET`으로 다른 탭의 캐시도 갱신합니다.
+
+장착 없이 게임 중 인벤토리에서 바로 던지며 한 판에 3개까지입니다. `USE_ITEM`은 진행 중인 게임에서 연결된 다른 참가자에게만 쓸 수 있고, 같은 대상에게는 5초 간격입니다. 방 잠금 안에서 이 조건을 확인해 자리를 먼저 잡고, 잠금을 푼 뒤 인벤토리를 1개 이상일 때만 줄이며 `item_uses`에 남깁니다. 확정되면 방에 `ITEM_EFFECT`, 본인에게 `INVENTORY`를 보내고, 재고가 없으면 잡은 자리를 되돌립니다. 연출은 순간 이벤트라 방 `version`을 올리지 않습니다. 오류는 `ITEM_NOT_FOUND`(404), `CASH_INSUFFICIENT`·`ITEM_OUT_OF_STOCK`·`ITEM_LIMIT_REACHED`(409), `ITEM_COOLDOWN`(429), `ITEM_TARGET_INVALID`(400)입니다.
+
 ## 공통 예외 처리
 
 업무 오류는 `throw new CustomException(ErrorCode.EMAIL_UNAVAILABLE)`처럼 전달합니다. `ErrorCode`에서 HTTP 상태·코드·안내 문구를 관리하고 HTTP 오류는 아래 형식으로 반환합니다. WebSocket 업무 오류는 `ERROR` 이벤트로 전달합니다.
@@ -183,6 +192,6 @@ Vite와 Nginx는 WebSocket 업그레이드를 전달합니다. 허용 목록은 
 
 ## 현재 범위
 
-이메일 가입·로그인·토큰 갱신·로그아웃·현재 사용자 조회를 제공합니다. 이메일 소유 확인, 비밀번호 재설정, 프로필 변경·탈퇴는 아직 구현하지 않았습니다. 방 관리·준비·채팅과 WebSocket 재접속은 구현했습니다. 온라인 경매(시작·입찰·정산·순위)는 메모리에서 진행하고, 게임 기록과 순위 보상 캐시는 PostgreSQL에 저장합니다. 상점·인벤토리·장난 아이템, 원장·지난 게임 조회 API는 미구현입니다. 가입 보상은 지급하지 않습니다.
+이메일 가입·로그인·토큰 갱신·로그아웃·현재 사용자 조회를 제공합니다. 이메일 소유 확인, 비밀번호 재설정, 프로필 변경·탈퇴는 아직 구현하지 않았습니다. 방 관리·준비·채팅과 WebSocket 재접속은 구현했습니다. 온라인 경매(시작·입찰·정산·순위)는 메모리에서 진행하고, 게임 기록과 순위 보상 캐시는 PostgreSQL에 저장합니다. 상점·인벤토리와 게임 중 장난 아이템 던지기는 구현했습니다. 구매·원장·지난 게임 조회 API는 미구현입니다. 가입 보상은 지급하지 않습니다.
 
 인증 테스트는 임시 PostgreSQL과 실제 HTTP를 사용합니다. 가입 검증·중복·비밀번호 해시, 현재 사용자 조회, CSRF 거절, 토큰 갱신과 refresh 재사용 거절, 로그아웃 후 refresh 폐기를 검증 대상으로 둡니다. 별도로 복사한 access JWT의 남은 유효기간도 세션 폐기와 혼동하지 않도록 구분합니다.
