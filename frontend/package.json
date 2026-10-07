@@ -25,7 +25,8 @@
     "assets:prepare": "node scripts/assets/prepare-animal-room.mjs",
     "assets:portraits": "node scripts/assets/render-lobby-models.mjs",
     "qa:rooms": "node scripts/qa/rooms-qa.mjs",
-    "qa:auction": "node scripts/qa/auction-qa.mjs"
+    "qa:auction": "node scripts/qa/auction-qa.mjs",
+    "qa:items": "node scripts/qa/items-qa.mjs"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-kr": "^5.3.0",
