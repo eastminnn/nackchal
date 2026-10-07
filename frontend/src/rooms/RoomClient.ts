@@ -1,5 +1,5 @@
-import { getWallet } from '../auth/api';
-import type { ActiveEmote } from '../game/types';
+import { buyItem, getShop, getWallet, type ShopItem } from '../auth/api';
+import type { ActiveEmote, Effect, ItemKind } from '../game/types';
 import type { ConnectionStatus, RoomCommand, RoomSummary, ServerMessage, SharedRoom } from './protocol';
 import { RoomSocket } from './RoomSocket';
 
@@ -15,7 +15,15 @@ interface Snapshot {
   readonly cash: number | null;
   /** 사용자 ID별 진행 중인 모션. 다시 쓸 수 있는 시각이 지나면 사라진다. */
   readonly emotes: Readonly<Record<string, ActiveEmote>>;
+  /** 판매 중인 아이템과 내 보유 수량. 아직 불러오지 못했으면 비어 있다. */
+  readonly shop: readonly ShopItem[];
+  /** 진행 중인 던지기 연출. 사용자 ID 기준이며 연출이 끝나면 사라진다. */
+  readonly effects: readonly Effect[];
+  /** 이번 판에 내가 더 던질 수 있는 수. 다른 판의 값이면 무시하고 판당 최대값으로 본다. */
+  readonly throws: { readonly gameId: string; readonly remaining: number } | null;
 }
+/** 던지기 연출(날아가는 시간 + 토마토 홍조)이 끝난 뒤 지운다. */
+const EFFECT_LIFETIME = 6000;
 /** 서버와 같은 최소 모션 간격(ms). 동작이 더 길면 동작이 끝나야 다시 쓸 수 있다. */
 const EMOTE_COOLDOWN = 4000;
 interface Pending {
@@ -33,7 +41,11 @@ export class RoomClient {
     clockOffset: 0,
     cash: null,
     emotes: {},
+    shop: [],
+    effects: [],
+    throws: null,
   };
+  private effectSequence = 0;
   private readonly listeners = new Set<() => void>();
   private readonly requests = new Map<string, Pending>();
   private listVersion = -1;
@@ -46,6 +58,7 @@ export class RoomClient {
   constructor(
     userId: string,
     private readonly loadWallet: () => Promise<number> = getWallet,
+    private readonly loadShop: () => Promise<ShopItem[]> = getShop,
   ) {
     this.storageKey = `nackchal-room:${userId}`;
     this.socket = new RoomSocket({
@@ -83,6 +96,20 @@ export class RoomClient {
   }
   private failRequests() {
     for (const id of this.requests.keys()) this.settle(id, false);
+  }
+  /** 아이템을 산다. 성공하면 캐시와 보유 수량을 바로 바꾸고, 실패하면 이유를 돌려준다. */
+  buy = async (item: ItemKind, quantity: number): Promise<string | null> => {
+    try {
+      const purchase = await buyItem(item, quantity, crypto.randomUUID());
+      this.walletVersion++;
+      this.publish({ cash: purchase.balance, shop: this.withQuantity(purchase.itemCode, purchase.quantity) });
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : '구매하지 못했어요.';
+    }
+  };
+  private withQuantity(item: ItemKind, quantity: number) {
+    return this.state.shop.map((entry) => (entry.code === item ? { ...entry, quantity } : entry));
   }
   private left() {
     this.clearRestore();
@@ -129,6 +156,10 @@ export class RoomClient {
       case 'WELCOME': {
         this.listVersion = -1;
         // 연결할 때마다 잔액을 다시 읽어 끊긴 동안 놓친 WALLET 이벤트를 메운다.
+        this.loadShop().then(
+          (shop) => this.publish({ shop }),
+          () => {},
+        );
         const version = this.walletVersion;
         this.loadWallet().then(
           (cash) => {
@@ -157,6 +188,30 @@ export class RoomClient {
           kind: message.emote,
           startedAt: message.startedAt,
           endsAt: message.endsAt,
+        });
+        return;
+      case 'ITEM_EFFECT': {
+        const effect: Effect = {
+          id: ++this.effectSequence,
+          source: message.userId,
+          target: message.targetUserId,
+          item: message.item,
+          at: message.at - this.state.clockOffset,
+          throughRound: 0,
+        };
+        this.publish({ effects: [...this.state.effects, effect] });
+        setTimeout(
+          () => this.publish({ effects: this.state.effects.filter((other) => other.id !== effect.id) }),
+          EFFECT_LIFETIME,
+        );
+        return;
+      }
+      case 'INVENTORY':
+        this.publish({
+          shop: this.withQuantity(message.item, message.quantity),
+          throws: this.state.room?.game
+            ? { gameId: this.state.room.game.gameId, remaining: message.gameRemaining }
+            : null,
         });
         return;
       case 'WALLET':

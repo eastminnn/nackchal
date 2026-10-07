@@ -1,7 +1,7 @@
 import type { User } from '../auth/api';
 import { CHARACTER_MODELS } from '../data/characters';
 import type { RoomInfo } from '../data/rooms';
-import { type ActiveEmote, type RoomState, SELF } from '../game/types';
+import { type ActiveEmote, type Effect, type RoomState, SELF } from '../game/types';
 import type { RoomSummary, SharedGame, SharedRoom } from './protocol';
 
 const PHASES: Readonly<Record<SharedGame['status'], RoomState['phase']>> = {
@@ -33,6 +33,7 @@ export function waitingView(
   user: User,
   clockOffset = 0,
   emotes: Readonly<Record<string, ActiveEmote>> = {},
+  effects: readonly Effect[] = [],
 ): RoomState {
   const viewId = (id: string) => (id === user.id ? SELF : id);
   const game = room?.game ?? null;
@@ -56,12 +57,19 @@ export function waitingView(
     room?.players.find((player) => player.userId === id)?.nickname ?? '떠난 참가자';
   const chats =
     room?.chats.map((chat) => ({ ...chat, playerId: viewId(chat.userId), name: chat.nickname })) ?? [];
-  if (!game) return { ...base, players, chats };
+  const thrown = effects.map((effect) => ({
+    ...effect,
+    source: viewId(effect.source),
+    target: viewId(effect.target),
+  }));
+  // 방 밖(로비 미리보기)에서는 미리보기 연출을 그대로 둔다.
+  if (!game) return { ...base, players, chats, ...(room ? { effects: thrown } : {}) };
   const live = inProgress(game);
   return {
     ...base,
     players,
     chats,
+    effects: thrown,
     phase: PHASES[game.status],
     round: game.round,
     lot: game.lot,

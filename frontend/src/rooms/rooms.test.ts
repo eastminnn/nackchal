@@ -32,8 +32,14 @@ const fixture = () =>
     starting: false,
   });
 const loadWallet = vi.fn(() => Promise.resolve(7));
+const loadShop = vi.fn(() =>
+  Promise.resolve([
+    { code: 'tomato' as const, name: '토마토', price: 3, quantity: 2 },
+    { code: 'can' as const, name: '깡통', price: 2, quantity: 0 },
+  ]),
+);
 function setup() {
-  const client = new RoomClient(userId, loadWallet);
+  const client = new RoomClient(userId, loadWallet, loadShop);
   const call = vi.mocked(RoomSocket).mock.calls.at(-1);
   if (!call) throw new Error('Room socket was not constructed');
   const [handlers] = call;
@@ -87,6 +93,59 @@ describe('wallet', () => {
     });
     expect(sharedRoomSchema.parse({ ...fixture(), starting: true }).starting).toBe(true);
     expect(() => serverMessageSchema.parse({ type: 'WALLET', balance: -1 })).toThrow();
+  });
+});
+
+describe('items', () => {
+  beforeEach(() => {
+    vi.stubGlobal('sessionStorage', { setItem: vi.fn(), getItem: vi.fn(() => null), removeItem: vi.fn() });
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+  it('loads the shop on welcome and follows my inventory', async () => {
+    const { client, handlers } = setup();
+    handlers.onMessage({ type: 'WELCOME', connectionId: 'a', activeRoomId: null, authExpiresAt: 1 });
+    await vi.waitFor(() => expect(client.getSnapshot().shop).toHaveLength(2));
+    handlers.onMessage({ type: 'INVENTORY', item: 'tomato', quantity: 1, gameRemaining: 2 });
+    expect(client.getSnapshot().shop[0]?.quantity).toBe(1);
+    expect(client.getSnapshot().throws).toBeNull();
+  });
+  it('turns thrown items into local-time effects that expire', () => {
+    vi.setSystemTime(10_000);
+    const { client, handlers } = setup();
+    handlers.onMessage({ type: 'ROOM_STATE', serverTime: 12_000, room: fixture() });
+    handlers.onMessage(
+      serverMessageSchema.parse({
+        type: 'ITEM_EFFECT',
+        userId: peerId,
+        targetUserId: userId,
+        item: 'can',
+        at: 12_000,
+      }),
+    );
+    expect(client.getSnapshot().effects).toEqual([
+      { id: 1, source: peerId, target: userId, item: 'can', at: 10_000, throughRound: 0 },
+    ]);
+    const user: User = { id: fixture().hostUserId, nickname: '고양이', avatarCode: 'plush-cat' };
+    const view = waitingView(initialState(), fixture(), user, 0, {}, client.getSnapshot().effects);
+    expect(view.effects[0]).toMatchObject({ source: peerId, target: 'me' });
+    vi.advanceTimersByTime(6000);
+    expect(client.getSnapshot().effects).toEqual([]);
+  });
+  it('rejects unknown items', () => {
+    expect(() =>
+      serverMessageSchema.parse({
+        type: 'ITEM_EFFECT',
+        userId: peerId,
+        targetUserId: userId,
+        item: 'banana',
+        at: 1,
+      }),
+    ).toThrow();
   });
 });
 

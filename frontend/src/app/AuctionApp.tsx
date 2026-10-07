@@ -2,7 +2,7 @@ import { QuestionIcon, SpeakerHighIcon, SpeakerSlashIcon, StorefrontIcon } from 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AuthError, type User } from '../auth/api';
 import { BrandMark } from '../components/brand/BrandMark';
-import { Shop } from '../components/game/Shop';
+import { OnlineShop } from '../components/game/OnlineShop';
 import { Modal } from '../components/ui/Modal';
 import { Button, Cash } from '../components/ui/primitives';
 import type { RoomInfo } from '../data/rooms';
@@ -56,8 +56,8 @@ export function AuctionApp({
   const shared = useSyncExternalStore(client.subscribe, client.getSnapshot);
   useEffect(() => client.connect(), [client]);
   const view = useMemo(
-    () => waitingView(state, shared.room, user, shared.clockOffset, shared.emotes),
-    [state, shared.room, user, shared.clockOffset, shared.emotes],
+    () => waitingView(state, shared.room, user, shared.clockOffset, shared.emotes, shared.effects),
+    [state, shared.room, user, shared.clockOffset, shared.emotes, shared.effects],
   );
   const rooms = useMemo(() => shared.rooms.map(roomInfo), [shared.rooms]);
   const enterRoom = (next: RoomInfo) => {
@@ -117,14 +117,9 @@ export function AuctionApp({
               <QuestionIcon size={20} />
               <span>게임 방법</span>
             </Button>
-            <Button
-              variant="ghost"
-              aria-label="장난 상점"
-              onClick={() => setModal('shop')}
-              disabled={state.phase !== 'lobby'}
-            >
+            <Button variant="ghost" aria-label="장난 상점" onClick={() => setModal('shop')}>
               <StorefrontIcon size={20} />
-              <span>장난 상점 · 미리보기</span>
+              <span>장난 상점</span>
             </Button>
             <span className="header-divider" />
             {shared.cash !== null && <Cash amount={shared.cash} />}
@@ -166,11 +161,7 @@ export function AuctionApp({
       <div id="main-content">{content}</div>
       {modal === 'shop' && (
         <Modal title="장난 상점" onClose={() => setModal(null)}>
-          <p className="demo-note">이 상점과 캐시는 이 탭에서만 사용하는 미리보기예요.</p>
-          <Shop state={state} server={server} />
-          <p className="error" role="status">
-            {state.error}
-          </p>
+          <OnlineShop items={shared.shop} cash={shared.cash} onBuy={client.buy} />
         </Modal>
       )}
       {modal === 'rules' && (
