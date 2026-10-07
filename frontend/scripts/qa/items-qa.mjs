@@ -39,6 +39,10 @@ await host.getByRole('button', { name: '방 만들기', exact: true }).click();
 const roomId = (await host.locator('.hud-room small').innerText()).replace('#', '');
 const roomName = await host.locator('h1').innerText();
 await guest.locator('.room-row').filter({ hasText: `#${roomId}` }).getByRole('button', { name: `${roomName} 입장` }).click();
+// 산 아이템은 대기실에서도 보이고, 경매가 시작되기 전에는 던질 수 없다.
+await expect(host.getByRole('button', { name: /^토마토 선택, 2개 보유/ })).toBeDisabled();
+await expect(host.locator('.hud-items-left')).toHaveText('경매가 시작되면 던질 수 있어요');
+await host.screenshot({ path: `${out}/waiting-items.png` });
 await guest.getByRole('button', { name: '준비하기', exact: true }).click();
 await host.getByRole('button', { name: '경매 시작하기' }).click();
 await expect(host.locator('.round-counter')).toHaveText('01 / 10');
