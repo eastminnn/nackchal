@@ -192,25 +192,6 @@ export function WaitingRoom({
                 })}
               </div>
             </section>
-            <section className="hud-items" aria-label="장난 아이템">
-              {items.map((item) => (
-                <button
-                  key={item.code}
-                  type="button"
-                  className={selected === item.code ? 'hud-item selected' : 'hud-item'}
-                  aria-label={`${item.name} 선택, ${item.quantity}개 보유`}
-                  aria-pressed={selected === item.code}
-                  disabled={!online || item.quantity === 0 || throwsLeft === 0}
-                  onClick={() => setSelected(selected === item.code ? null : item.code)}
-                >
-                  <ObjectArt kind={item.code} />
-                  <span>
-                    {item.name} <strong>×{item.quantity}</strong>
-                  </span>
-                </button>
-              ))}
-              <small className="hud-items-left">이번 판 {throwsLeft}/3</small>
-            </section>
             {selected && (
               <section className="hud-targets" aria-label="던질 상대 선택">
                 <div>
@@ -282,6 +263,28 @@ export function WaitingRoom({
             </div>
           </>
         )}
+        {/* 산 아이템은 대기실에서도 보이게 두고, 경매가 진행 중일 때만 던질 수 있다. */}
+        <section className="hud-items" aria-label="장난 아이템">
+          {items.map((item) => (
+            <button
+              key={item.code}
+              type="button"
+              className={selected === item.code ? 'hud-item selected' : 'hud-item'}
+              aria-label={`${item.name} 선택, ${item.quantity}개 보유`}
+              aria-pressed={selected === item.code}
+              disabled={!live || !online || item.quantity === 0 || throwsLeft === 0}
+              onClick={() => setSelected(selected === item.code ? null : item.code)}
+            >
+              <ObjectArt kind={item.code} />
+              <span>
+                {item.name} <strong>×{item.quantity}</strong>
+              </span>
+            </button>
+          ))}
+          <small className="hud-items-left">
+            {live ? `이번 판 ${throwsLeft}/3` : '경매가 시작되면 던질 수 있어요'}
+          </small>
+        </section>
         {result && (
           <aside className="hud-drawer hud-result" aria-label="지난 게임 결과">
             <button
