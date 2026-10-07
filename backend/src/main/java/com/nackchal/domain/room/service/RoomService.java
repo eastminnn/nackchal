@@ -8,6 +8,8 @@ import com.nackchal.domain.auction.model.GameSettlement;
 import com.nackchal.domain.game.service.GameRecords;
 import com.nackchal.domain.game.service.GameSettlementDispatcher;
 import com.nackchal.domain.game.service.GameStart;
+import com.nackchal.domain.item.event.InventoryChangedEvent;
+import com.nackchal.domain.item.service.ItemStock;
 import com.nackchal.domain.room.dto.response.RoomChatResponse;
 import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.dto.response.RoomSummaryResponse;
@@ -15,6 +17,7 @@ import com.nackchal.domain.room.model.EmoteKind;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
 import com.nackchal.domain.room.model.RoomEmotedEvent;
+import com.nackchal.domain.room.model.RoomItemThrownEvent;
 import com.nackchal.domain.room.service.WaitingRoom.Member;
 import com.nackchal.domain.wallet.event.WalletChangedEvent;
 import java.security.SecureRandom;
@@ -54,17 +57,19 @@ public class RoomService {
     private final GameRecords records;
     private final GameSettlementDispatcher settlements;
     private final AuctionRules rules;
+    private final ItemStock itemStock;
 
     /** 잠금 안에서 꺼내고 잠금을 푼 뒤 제출할 정산. */
     private record Pending(String roomId, GameSettlement settlement) {}
 
     public RoomService(Clock clock, ApplicationEventPublisher events, GameRecords records,
-                       GameSettlementDispatcher settlements, AuctionRules rules) {
+                       GameSettlementDispatcher settlements, AuctionRules rules, ItemStock itemStock) {
         this.clock = clock;
         this.events = events;
         this.records = records;
         this.settlements = settlements;
         this.rules = rules;
+        this.itemStock = itemStock;
         for (int i = 0; i < userLocks.length; i++) userLocks[i] = new Object();
     }
 
@@ -235,6 +240,55 @@ public class RoomService {
             return false;
         });
         events.publishEvent(emoted[0]);
+    }
+
+    /**
+     * 게임 중 다른 참가자에게 아이템을 던진다. 방 잠금 안에서 대상·판당 개수·대상별 간격을 확인해 자리를 잡고,
+     * 잠금을 푼 뒤 인벤토리에서 하나를 확정해 뺀다. 확정되면 방에 연출을 알리고, 재고가 없으면 잡은 자리를 되돌린다.
+     * @throws CustomException ROOM_NOT_JOINED, GAME_NOT_FOUND, ITEM_TARGET_INVALID, ITEM_LIMIT_REACHED,
+     *                         ITEM_COOLDOWN, ITEM_OUT_OF_STOCK
+     */
+    public void useItem(RoomActor actor, String item, UUID targetUserId, UUID requestId) {
+        String[] roomId = new String[1];
+        UUID[] gameId = new UUID[1];
+        Instant[] at = new Instant[1];
+        ItemThrows.Reservation[] reservation = new ItemThrows.Reservation[1];
+        mutate(actor, false, (room, member) -> {
+            if (!room.gameInProgress()) throw error(ErrorCode.GAME_NOT_FOUND);
+            Member target = room.members.get(targetUserId);
+            if (targetUserId.equals(actor.userId()) || target == null || target.disconnectedAt != null) {
+                throw error(ErrorCode.ITEM_TARGET_INVALID);
+            }
+            if (room.itemThrows == null || !room.itemThrows.gameId.equals(room.game.id())) {
+                room.itemThrows = new ItemThrows(room.game.id());
+            }
+            at[0] = clock.instant();
+            reservation[0] = room.itemThrows.reserve(actor.userId(), targetUserId, at[0]);
+            roomId[0] = room.id;
+            gameId[0] = room.game.id();
+            return false;
+        });
+        long quantity;
+        try {
+            quantity = itemStock.consume(actor.userId(), item, gameId[0], targetUserId, requestId);
+        } catch (RuntimeException exception) {
+            WaitingRoom room = rooms.get(roomId[0]);
+            if (room != null) synchronized (room) {
+                if (room.itemThrows != null && room.itemThrows.gameId.equals(gameId[0])) {
+                    room.itemThrows.release(reservation[0]);
+                }
+            }
+            throw exception;
+        }
+        int remaining = 0;
+        WaitingRoom room = rooms.get(roomId[0]);
+        if (room != null) synchronized (room) {
+            if (room.itemThrows != null && room.itemThrows.gameId.equals(gameId[0])) {
+                remaining = room.itemThrows.remaining(actor.userId());
+            }
+        }
+        events.publishEvent(new RoomItemThrownEvent(roomId[0], actor.userId(), targetUserId, item, at[0]));
+        events.publishEvent(new InventoryChangedEvent(actor.userId(), item, quantity, remaining));
     }
 
     /**

@@ -22,7 +22,8 @@ import java.util.UUID;
         @JsonSubTypes.Type(value = RoomCommand.Ping.class, name = "PING"),
         @JsonSubTypes.Type(value = RoomCommand.StartGame.class, name = "START_GAME"),
         @JsonSubTypes.Type(value = RoomCommand.PlaceBid.class, name = "PLACE_BID"),
-        @JsonSubTypes.Type(value = RoomCommand.Emote.class, name = "EMOTE")
+        @JsonSubTypes.Type(value = RoomCommand.Emote.class, name = "EMOTE"),
+        @JsonSubTypes.Type(value = RoomCommand.UseItem.class, name = "USE_ITEM")
 })
 sealed interface RoomCommand {
     UUID requestId();
@@ -36,6 +37,9 @@ sealed interface RoomCommand {
     record Ping(@NotNull UUID requestId) implements RoomCommand {}
     record StartGame(@NotNull UUID requestId) implements RoomCommand {}
     record Emote(@NotNull UUID requestId, @NotNull EmoteKind emote) implements RoomCommand {}
+    /** item은 아이템 코드, targetUserId는 맞힐 참가자. 던지는 사람은 연결의 사용자다. */
+    record UseItem(@NotNull UUID requestId, @NotNull @Pattern(regexp = "[a-z]{1,32}") String item,
+                   @NotNull UUID targetUserId) implements RoomCommand {}
     /** amount는 증가분이 아니라 최종 입찰 금액. expectedBidVersion은 클라이언트가 마지막으로 본 입찰 버전. */
     record PlaceBid(@NotNull UUID requestId, @NotNull UUID gameId, @NotNull @Positive Integer round,
                     @NotNull @PositiveOrZero Long expectedBidVersion, @NotNull @Positive Integer amount)
