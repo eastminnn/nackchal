@@ -30,6 +30,9 @@ public enum ErrorCode {
     // 회원가입
     EMAIL_UNAVAILABLE(HttpStatus.CONFLICT, "EMAIL_UNAVAILABLE", "이미 사용 중인 이메일이에요."),
 
+    // 프로필
+    PROFILE_LOCKED_IN_ROOM(HttpStatus.CONFLICT, "PROFILE_LOCKED_IN_ROOM", "방에서 나온 뒤 캐릭터를 바꿀 수 있어요."),
+
     // 방 참가와 연결
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "이미 종료된 방이에요."),
     ROOM_FULL(HttpStatus.CONFLICT, "ROOM_FULL", "방이 가득 찼어요. 최대 4명까지 참가할 수 있어요."),

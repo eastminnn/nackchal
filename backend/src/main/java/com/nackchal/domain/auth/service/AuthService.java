@@ -57,7 +57,7 @@ public class AuthService {
             throw new CustomException(ErrorCode.EMAIL_UNAVAILABLE);
         }
 
-        User user = userRepository.saveAndFlush(new User(request.nickname()));
+        User user = userRepository.saveAndFlush(new User(request.nickname(), request.avatarCode()));
         String passwordHash = passwordEncoder.encode(request.password());
         saveEmailCredential(user.getId(), request.email(), passwordHash);
         walletService.create(user.getId());

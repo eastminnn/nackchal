@@ -43,8 +43,8 @@ class AuthServiceTests {
         var users = mock(UserRepository.class);
         var credentials = mock(EmailCredentialRepository.class);
         var passwords = mock(PasswordEncoder.class);
-        var user = new User("곰");
-        var request = new RegistrationRequest("bear@example.test", "test-password", "곰");
+        var user = new User("곰", null);
+        var request = new RegistrationRequest("bear@example.test", "test-password", "곰", null);
         var failure = new DataIntegrityViolationException("diagnostic", new ConstraintViolationException(
                 "diagnostic", new SQLException("diagnostic", sqlState), constraint));
         when(users.saveAndFlush(any())).thenReturn(user);
