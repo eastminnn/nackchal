@@ -256,6 +256,18 @@ body:has(.immersive-game) {
   justify-content: center;
   gap: 4px;
 }
+.hud-items-left {
+  align-self: flex-end;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  background: rgba(17, 25, 22, 0.82);
+  border-radius: 8px;
+}
+.hud-item:disabled {
+  opacity: 0.45;
+}
 .hud-item svg {
   width: 40px;
   height: 38px;

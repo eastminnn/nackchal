@@ -16,6 +16,9 @@ import { roomInfo, waitingView } from '../rooms/view';
 
 const LobbyBackdrop = lazy(() => import('../scene/LobbyBackdrop'));
 
+/** 한 판에 던질 수 있는 아이템 수. 서버와 같다. */
+const ITEMS_PER_GAME = 3;
+
 export function AuctionApp({
   user,
   arriving,
@@ -79,6 +82,10 @@ export function AuctionApp({
       status={shared.status}
       pending={shared.pending}
       error={shared.error}
+      items={shared.shop}
+      throwsLeft={
+        shared.throws && shared.throws.gameId === room.game?.gameId ? shared.throws.remaining : ITEMS_PER_GAME
+      }
     />
   ) : (
     <Lobby
