@@ -6,6 +6,8 @@ import com.nackchal.domain.room.dto.response.RoomResponse;
 import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.RoomChangedEvent;
 import com.nackchal.domain.room.model.RoomEmotedEvent;
+import com.nackchal.domain.room.model.RoomItemThrownEvent;
+import com.nackchal.domain.item.event.InventoryChangedEvent;
 import com.nackchal.domain.room.service.RoomService;
 import com.nackchal.domain.wallet.event.WalletChangedEvent;
 import com.nackchal.domain.user.dto.response.UserResponse;
@@ -139,6 +141,25 @@ public class RoomConnections {
         connections.values().stream()
                 .filter(connection -> roomService.roomId(connection.actor).filter(event.roomId()::equals).isPresent())
                 .forEach(connection -> send(connection, emote));
+    }
+
+    /** 확정된 아이템 던지기를 그 방에 참가 중인 연결에만 보낸다. */
+    @EventListener
+    public void itemThrown(RoomItemThrownEvent event) {
+        Map<String, Object> effect = Map.of("type", "ITEM_EFFECT", "userId", event.userId(),
+                "targetUserId", event.targetUserId(), "item", event.item(), "at", event.at().toEpochMilli());
+        connections.values().stream()
+                .filter(connection -> roomService.roomId(connection.actor).filter(event.roomId()::equals).isPresent())
+                .forEach(connection -> send(connection, effect));
+    }
+
+    /** 아이템을 쓴 본인의 연결에만 남은 수량과 이번 판에 더 던질 수 있는 수를 보낸다. */
+    @EventListener
+    public void inventoryChanged(InventoryChangedEvent event) {
+        Map<String, Object> inventory = Map.of("type", "INVENTORY", "item", event.itemCode(),
+                "quantity", event.quantity(), "gameRemaining", event.gameRemaining());
+        connections.values().stream().filter(connection -> connection.actor.userId().equals(event.userId()))
+                .forEach(connection -> send(connection, inventory));
     }
 
     /** 정산으로 캐시가 바뀐 사용자의 열린 연결에만 새 잔액을 보낸다. 다른 참가자에게는 알리지 않는다. */

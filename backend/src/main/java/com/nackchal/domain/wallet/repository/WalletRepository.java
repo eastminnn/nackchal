@@ -15,4 +15,10 @@ public interface WalletRepository extends JpaRepository<Wallet, UUID> {
     @Query("update Wallet wallet set wallet.balance = wallet.balance + :amount, wallet.updatedAt = :now "
             + "where wallet.userId = :userId")
     int add(UUID userId, long amount, Instant now);
+
+    /** 잔액이 금액 이상일 때만 뺀다. 동시 구매가 잔액을 음수로 만들지 않는다. 바뀐 행 수를 돌려준다. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Wallet wallet set wallet.balance = wallet.balance - :amount, wallet.updatedAt = :now "
+            + "where wallet.userId = :userId and wallet.balance >= :amount")
+    int spend(UUID userId, long amount, Instant now);
 }

@@ -12,6 +12,8 @@ import com.nackchal.domain.room.model.RoomActor;
 import com.nackchal.domain.room.model.EmoteKind;
 import com.nackchal.domain.room.model.RoomChangedEvent;
 import com.nackchal.domain.room.model.RoomEmotedEvent;
+import com.nackchal.domain.room.model.RoomItemThrownEvent;
+import com.nackchal.domain.item.event.InventoryChangedEvent;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -34,6 +36,7 @@ class RoomServiceTests {
     private final MutableClock clock = new MutableClock();
     private final List<Object> events = new CopyOnWriteArrayList<>();
     private final FakeGameRecords records = new FakeGameRecords();
+    private final FakeItemStock stock = new FakeItemStock();
     /** 기본은 제출 즉시 같은 스레드에서 정산한다. deferSettlements()로 나중에 실행할 수 있다. */
     private final List<Runnable> queuedSettlements = new CopyOnWriteArrayList<>();
     private volatile boolean deferSettlements;
@@ -41,7 +44,7 @@ class RoomServiceTests {
             new GameSettlementDispatcher(records, task -> {
                 if (deferSettlements) queuedSettlements.add(task);
                 else task.run();
-            }, List.of()), AuctionRules.DEFAULT);
+            }, List.of()), AuctionRules.DEFAULT, stock);
 
     @Test
     void createsCodedRoomAndIdempotentJoinDoesNotChangeVersion() {
@@ -245,7 +248,8 @@ class RoomServiceTests {
                         return observed[0].find(((RoomChangedEvent) event).roomId());
                     }).get(2, TimeUnit.SECONDS);
                 } catch (Exception exception) { throw new AssertionError(exception); }
-            }, records, new GameSettlementDispatcher(records, Runnable::run, List.of()), AuctionRules.DEFAULT);
+            }, records, new GameSettlementDispatcher(records, Runnable::run, List.of()), AuctionRules.DEFAULT,
+                    stock);
             var room = observed[0].create(host);
             observed[0].ready(host, true);
             observed[0].disconnect(host);
@@ -638,6 +642,91 @@ class RoomServiceTests {
         service.emote(guest, EmoteKind.MIDDLE_FINGER);
         service.disconnect(host);
         expect(ErrorCode.ROOM_NOT_JOINED, () -> service.emote(host, EmoteKind.SMOKE));
+    }
+
+    @Test
+    void itemsAreThrownOnlyInGamesAtConnectedOtherPlayers() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = service.create(host);
+        service.join(guest, room.id());
+        expect(ErrorCode.GAME_NOT_FOUND, () -> service.useItem(host, "tomato", guest.userId(), UUID.randomUUID()));
+        service.ready(guest, true);
+        service.startGame(host);
+        expect(ErrorCode.ITEM_TARGET_INVALID, () -> service.useItem(host, "tomato", host.userId(), UUID.randomUUID()));
+        expect(ErrorCode.ITEM_TARGET_INVALID,
+                () -> service.useItem(host, "tomato", UUID.randomUUID(), UUID.randomUUID()));
+        service.disconnect(guest);
+        expect(ErrorCode.ITEM_TARGET_INVALID, () -> service.useItem(host, "tomato", guest.userId(), UUID.randomUUID()));
+        assertThat(stock.uses).isEmpty();
+    }
+
+    @Test
+    void throwIsAnnouncedToTheRoomAndInventoryToTheThrower() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        var room = startedRoom(host, guest);
+        events.clear();
+        Instant now = clock.instant();
+
+        service.useItem(host, "can", guest.userId(), UUID.randomUUID());
+
+        assertThat(stock.uses).containsExactly(
+                new FakeItemStock.Use(host.userId(), "can", room.game().gameId(), guest.userId()));
+        assertThat(events).containsExactly(
+                new RoomItemThrownEvent(room.id(), host.userId(), guest.userId(), "can", now),
+                new InventoryChangedEvent(host.userId(), "can", 8, 2));
+        assertThat(service.find(room.id()).orElseThrow().version()).as("방 상태는 바뀌지 않음").isEqualTo(room.version());
+    }
+
+    @Test
+    void threePerGameAndFiveSecondsPerTarget() {
+        RoomActor host = actor();
+        RoomActor second = actor();
+        RoomActor third = actor();
+        startedRoom(host, second, third);
+        service.useItem(host, "tomato", second.userId(), UUID.randomUUID());
+        service.useItem(host, "tomato", third.userId(), UUID.randomUUID());
+        clock.advance(4_999);
+        expect(ErrorCode.ITEM_COOLDOWN, () -> service.useItem(host, "tomato", second.userId(), UUID.randomUUID()));
+        service.useItem(second, "tomato", host.userId(), UUID.randomUUID());
+        clock.advance(1);
+        service.useItem(host, "tomato", second.userId(), UUID.randomUUID());
+        clock.advance(5_000);
+        expect(ErrorCode.ITEM_LIMIT_REACHED, () -> service.useItem(host, "can", third.userId(), UUID.randomUUID()));
+        assertThat(stock.uses).hasSize(4);
+    }
+
+    @Test
+    void failedStockReleasesTheReservedThrow() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        startedRoom(host, guest);
+        stock.outOfStock = true;
+        expect(ErrorCode.ITEM_OUT_OF_STOCK, () -> service.useItem(host, "tomato", guest.userId(), UUID.randomUUID()));
+        stock.outOfStock = false;
+        events.clear();
+        service.useItem(host, "tomato", guest.userId(), UUID.randomUUID());
+        assertThat(events).filteredOn(InventoryChangedEvent.class::isInstance).singleElement()
+                .satisfies(event -> assertThat(((InventoryChangedEvent) event).gameRemaining()).isEqualTo(2));
+    }
+
+    @Test
+    void nextGameStartsWithFreshThrows() {
+        RoomActor host = actor();
+        RoomActor guest = actor();
+        startedRoom(host, guest);
+        for (int i = 0; i < 3; i++) {
+            service.useItem(host, "tomato", guest.userId(), UUID.randomUUID());
+            clock.advance(5_000);
+        }
+        expect(ErrorCode.ITEM_LIMIT_REACHED, () -> service.useItem(host, "tomato", guest.userId(), UUID.randomUUID()));
+        clock.advance(28_000 * 10);
+        service.advanceGames();
+        service.ready(guest, true);
+        service.startGame(host);
+        service.useItem(host, "tomato", guest.userId(), UUID.randomUUID());
+        assertThat(stock.uses).hasSize(4);
     }
 
     private RoomResponse startedRoom(RoomActor host, RoomActor... guests) {

@@ -120,6 +120,45 @@ export function getWallet(): Promise<number> {
   return request(async () => walletSchema.parse(await api.get('/api/wallet').json()).balance);
 }
 
+const shopItemSchema = z.object({
+  code: z.enum(['tomato', 'can']),
+  name: z.string(),
+  price: z.number().int().positive(),
+  quantity: z.number().int().min(0),
+});
+const purchaseSchema = z.object({
+  balance: z.number().int().min(0),
+  itemCode: z.enum(['tomato', 'can']),
+  quantity: z.number().int().min(0),
+});
+export type ShopItem = z.infer<typeof shopItemSchema>;
+export type Purchase = z.infer<typeof purchaseSchema>;
+const serverErrorSchema = z.object({ message: z.string() });
+
+/** 판매 중인 장난 아이템과 내 보유 수량. */
+export function getShop(): Promise<ShopItem[]> {
+  return request(async () => z.array(shopItemSchema).parse(await api.get('/api/shop').json()));
+}
+
+/** 아이템을 산다. 실패하면 서버가 알려 준 이유(캐시 부족 등)를 그대로 담아 던진다. */
+export function buyItem(itemCode: ShopItem['code'], quantity: number, requestId: string): Promise<Purchase> {
+  return request(async () => {
+    const response = await api.post('/api/shop/purchases', {
+      json: { itemCode, quantity, requestId },
+      headers: await csrfHeaders(),
+      throwHttpErrors: false,
+    });
+    if (!response.ok) {
+      const body = serverErrorSchema.safeParse(await response.json().catch(() => null));
+      throw new AuthError(
+        response.status,
+        body.success ? body.data.message : '구매하지 못했어요. 잠시 후 다시 시도해 주세요.',
+      );
+    }
+    return purchaseSchema.parse(await response.json());
+  });
+}
+
 export function getUser(): Promise<User | null> {
   return request(async () => (await readUser()) ?? refreshUser());
 }

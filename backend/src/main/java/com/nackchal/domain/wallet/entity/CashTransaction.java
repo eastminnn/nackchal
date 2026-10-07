@@ -16,8 +16,8 @@ import java.util.UUID;
 @Table(name = "cash_transactions")
 public class CashTransaction {
 
-    /** 캐시가 바뀐 이유. 상점을 추가할 때 PURCHASE를 늘린다 */
-    public enum Reason { GAME_REWARD }
+    /** 캐시가 바뀐 이유. 보상은 게임, 구매 차감은 구매에 연결된다 */
+    public enum Reason { GAME_REWARD, PURCHASE }
 
     @Id
     private UUID id;
@@ -32,8 +32,9 @@ public class CashTransaction {
     @Column(nullable = false, length = 24)
     private Reason reason;
 
-    @Column(nullable = false)
     private UUID gameId;
+
+    private UUID purchaseId;
 
     @Column(nullable = false)
     private Instant createdAt;
@@ -41,17 +42,24 @@ public class CashTransaction {
     protected CashTransaction() {
     }
 
-    private CashTransaction(UUID userId, long amount, Reason reason, UUID gameId, Instant createdAt) {
+    private CashTransaction(UUID userId, long amount, Reason reason, UUID gameId, UUID purchaseId,
+                            Instant createdAt) {
         this.id = UUID.randomUUID();
         this.userId = userId;
         this.amount = amount;
         this.reason = reason;
         this.gameId = gameId;
+        this.purchaseId = purchaseId;
         this.createdAt = createdAt;
     }
 
     public static CashTransaction gameReward(UUID userId, long amount, UUID gameId, Instant now) {
-        return new CashTransaction(userId, amount, Reason.GAME_REWARD, gameId, now);
+        return new CashTransaction(userId, amount, Reason.GAME_REWARD, gameId, null, now);
+    }
+
+    /** 구매 차감. amount는 양수로 받고 원장에는 음수로 남긴다. */
+    public static CashTransaction purchase(UUID userId, long amount, UUID purchaseId, Instant now) {
+        return new CashTransaction(userId, -amount, Reason.PURCHASE, null, purchaseId, now);
     }
 
     public UUID getUserId() {

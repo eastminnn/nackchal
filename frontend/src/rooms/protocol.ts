@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CHARACTER_MODELS } from '../data/characters';
-import { EMOTE_KINDS, type EmoteKind, OBJECT_KINDS } from '../game/types';
+import { EMOTE_KINDS, type EmoteKind, type ItemKind, OBJECT_KINDS } from '../game/types';
 
 const roomId = z
   .string()
@@ -97,6 +97,19 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('AUTH_RENEWED'), expiresAt: z.number().int() }),
   z.object({ type: z.literal('WALLET'), balance: z.number().int().min(0) }),
   z.object({
+    type: z.literal('ITEM_EFFECT'),
+    userId,
+    targetUserId: userId,
+    item: z.enum(['tomato', 'can']),
+    at: z.number(),
+  }),
+  z.object({
+    type: z.literal('INVENTORY'),
+    item: z.enum(['tomato', 'can']),
+    quantity: z.number().int().min(0),
+    gameRemaining: z.number().int().min(0),
+  }),
+  z.object({
     type: z.literal('EMOTE'),
     userId,
     emote: z.enum(EMOTE_KINDS),
@@ -133,6 +146,7 @@ export type RoomCommand =
   | { readonly type: 'PING' }
   | { readonly type: 'START_GAME' }
   | { readonly type: 'EMOTE'; readonly emote: EmoteKind }
+  | { readonly type: 'USE_ITEM'; readonly item: ItemKind; readonly targetUserId: string }
   | {
       readonly type: 'PLACE_BID';
       readonly gameId: string;

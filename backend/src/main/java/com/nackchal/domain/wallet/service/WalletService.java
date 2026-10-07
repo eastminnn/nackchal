@@ -52,6 +52,21 @@ public class WalletService {
     }
 
     /**
+     * 구매 금액을 원장에 남기고 잔액에서 뺀다. 구매 트랜잭션 안에서만 호출한다.
+     * @return 차감 후 잔액
+     * @throws CustomException CASH_INSUFFICIENT (트랜잭션 전체가 롤백된다)
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public long spendOnPurchase(UUID userId, long amount, UUID purchaseId) {
+        if (amount <= 0) throw new IllegalArgumentException("Purchase must cost cash: " + amount);
+        cashTransactionRepository.save(CashTransaction.purchase(userId, amount, purchaseId, clock.instant()));
+        if (walletRepository.spend(userId, amount, clock.instant()) != 1) {
+            throw new CustomException(ErrorCode.CASH_INSUFFICIENT);
+        }
+        return walletRepository.findById(userId).orElseThrow().getBalance();
+    }
+
+    /**
      * 게임 보상을 원장에 남기고 잔액을 더한다. 게임 정산 트랜잭션 안에서만 호출한다.
      * 같은 판의 보상이 이미 있으면 원장의 유니크 인덱스가 거절해 트랜잭션 전체가 롤백된다.
      * @return 지급 후 잔액

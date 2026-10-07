@@ -40,6 +40,14 @@ public enum ErrorCode {
     INVALID_CHAT(HttpStatus.BAD_REQUEST, "INVALID_CHAT", "채팅은 1~100자로 입력해 주세요."),
     CHAT_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "CHAT_RATE_LIMITED", "채팅은 1초에 한 번씩 보낼 수 있어요."),
     EMOTE_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "EMOTE_RATE_LIMITED", "잠시 후 다시 할 수 있어요."),
+
+    // 상점과 장난 아이템
+    ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "지금은 살 수 없는 아이템이에요."),
+    CASH_INSUFFICIENT(HttpStatus.CONFLICT, "CASH_INSUFFICIENT", "캐시가 부족해요. 한 판을 마치면 캐시를 받을 수 있어요."),
+    ITEM_OUT_OF_STOCK(HttpStatus.CONFLICT, "ITEM_OUT_OF_STOCK", "가진 아이템이 없어요. 상점에서 사 주세요."),
+    ITEM_LIMIT_REACHED(HttpStatus.CONFLICT, "ITEM_LIMIT_REACHED", "한 판에 아이템은 3개까지 던질 수 있어요."),
+    ITEM_COOLDOWN(HttpStatus.TOO_MANY_REQUESTS, "ITEM_COOLDOWN", "같은 친구에게는 5초 뒤에 다시 던질 수 있어요."),
+    ITEM_TARGET_INVALID(HttpStatus.BAD_REQUEST, "ITEM_TARGET_INVALID", "던질 수 없는 대상이에요."),
     ROOM_IN_GAME(HttpStatus.CONFLICT, "ROOM_IN_GAME", "게임이 진행 중인 방이에요. 끝난 뒤 입장해 주세요."),
 
     // 게임 시작과 입찰

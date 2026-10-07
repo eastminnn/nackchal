@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import com.nackchal.domain.auction.model.AuctionRules;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -30,6 +31,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -52,6 +54,7 @@ class RoomWebSocketIntegrationTests {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
     @LocalServerPort int port;
+    @Autowired JdbcTemplate jdbc;
 
     /** 한 판을 몇 초 안에 끝내는 규칙. 입찰 테스트가 끝날 때까지 첫 경매는 열려 있다. */
     @TestConfiguration
@@ -296,6 +299,46 @@ class RoomWebSocketIntegrationTests {
             watcher.barrier();
             assertThat(watcher.history).noneMatch(node -> type(node, "WALLET"));
             assertThat(watcher.pending).noneMatch(node -> type(node, "WALLET"));
+        }
+    }
+
+    @Test
+    void boughtItemsAreThrownInGameAndOnlyTheThrowerSeesInventory() throws Exception {
+        try (var host = account("방장"); var guest = account("손님"); var lobby = account("로비")) {
+            jdbc.update("UPDATE wallets SET balance = 10 WHERE user_id = ?::uuid", host.userId);
+            var bought = host.post("/api/shop/purchases",
+                    Map.of("itemCode", "tomato", "quantity", 2, "requestId", UUID.randomUUID().toString()));
+            assertThat(bought.statusCode()).as(bought.body()).isEqualTo(200);
+            assertThat(JSON.readTree(bought.body()).path("balance").longValue()).isEqualTo(4);
+            assertThat(JSON.readTree(bought.body()).path("quantity").longValue()).isEqualTo(2);
+
+            var first = host.connect();
+            var second = guest.connect();
+            var idle = lobby.connect();
+            String roomId = create(first);
+            join(second, roomId);
+            first.reject("USE_ITEM", Map.of("item", "tomato", "targetUserId", guest.userId), 409, "GAME_NOT_FOUND");
+            second.accept("SET_READY", Map.of("ready", true));
+            first.accept("START_GAME", Map.of());
+            first.state(roomId, room -> text(room.path("game").path("status")).equals("AUCTION"));
+
+            first.accept("USE_ITEM", Map.of("item", "tomato", "targetUserId", guest.userId, "userId", guest.userId));
+            for (var socket : List.of(first, second)) {
+                var effect = socket.await(node -> type(node, "ITEM_EFFECT"));
+                assertThat(effect.path("userId").stringValue()).isEqualTo(host.userId);
+                assertThat(effect.path("targetUserId").stringValue()).isEqualTo(guest.userId);
+                assertThat(effect.path("item").stringValue()).isEqualTo("tomato");
+            }
+            var inventory = first.await(node -> type(node, "INVENTORY"));
+            assertThat(inventory.path("quantity").longValue()).isEqualTo(1);
+            assertThat(inventory.path("gameRemaining").intValue()).isEqualTo(2);
+            second.reject("USE_ITEM", Map.of("item", "tomato", "targetUserId", host.userId), 409, "ITEM_OUT_OF_STOCK");
+            first.reject("USE_ITEM", Map.of("item", "tomato", "targetUserId", host.userId), 400, "ITEM_TARGET_INVALID");
+
+            for (var outsider : List.of(second, idle)) outsider.barrier();
+            assertThat(second.history).noneMatch(node -> type(node, "INVENTORY"));
+            assertThat(idle.history).noneMatch(node -> type(node, "ITEM_EFFECT") || type(node, "INVENTORY"));
+            assertThat(JSON.readTree(host.get("/api/shop").body()).get(0).path("quantity").longValue()).isEqualTo(1);
         }
     }
 

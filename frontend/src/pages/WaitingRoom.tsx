@@ -7,13 +7,15 @@ import {
   TrophyIcon,
   XIcon,
 } from '@phosphor-icons/react';
-import { lazy, Suspense, useCallback, useState } from 'react';
-import type { User } from '../auth/api';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import type { ShopItem, User } from '../auth/api';
+import { ObjectArt } from '../components/art/ObjectArt';
 import { ChatLog, OnlineChatComposer } from '../components/game/Chat';
 import { EmoteButtons } from '../components/game/EmoteButtons';
+import { Players } from '../components/game/Players';
 import { Timer } from '../components/game/Timer';
 import { Button, Money } from '../components/ui/primitives';
-import { MIN_PLAYERS, type RoomState, SELF } from '../game/types';
+import { ITEM_NAMES, type ItemKind, MIN_PLAYERS, type RoomState, SELF } from '../game/types';
 import { ConnectionNotice } from '../rooms/ConnectionNotice';
 import type { ConnectionStatus, SharedGame, SharedRoom } from '../rooms/protocol';
 import type { RoomClient } from '../rooms/RoomClient';
@@ -31,6 +33,8 @@ export function WaitingRoom({
   status,
   pending,
   error,
+  items,
+  throwsLeft,
 }: {
   readonly room: SharedRoom;
   readonly state: RoomState;
@@ -39,6 +43,10 @@ export function WaitingRoom({
   readonly status: ConnectionStatus;
   readonly pending: boolean;
   readonly error: string;
+  /** 내 보유 아이템. */
+  readonly items: readonly ShopItem[];
+  /** 이번 판에 더 던질 수 있는 수. */
+  readonly throwsLeft: number;
 }) {
   const [modelsReady, setModelsReady] = useState(false);
   const [dismissedResult, setDismissedResult] = useState<string | null>(null);
@@ -56,6 +64,24 @@ export function WaitingRoom({
   const myBalance = state.players.find((player) => player.id === SELF)?.balance ?? 0;
   const leader = state.players.find((player) => player.id === state.leader);
   const result = game && !live && dismissedResult !== game.gameId ? game : null;
+  const [selected, setSelected] = useState<ItemKind | null>(null);
+  // 게임이 끝나거나 던질 수 없게 되면 고른 아이템을 놓는다. Esc로도 취소한다.
+  useEffect(() => {
+    if (!live || throwsLeft === 0) setSelected(null);
+  }, [live, throwsLeft]);
+  useEffect(() => {
+    if (!selected) return;
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelected(null);
+    };
+    window.addEventListener('keydown', cancel);
+    return () => window.removeEventListener('keydown', cancel);
+  }, [selected]);
+  const throwItem = (target: string) => {
+    if (!selected) return;
+    void client.command({ type: 'USE_ITEM', item: selected, targetUserId: target });
+    setSelected(null);
+  };
   return (
     <main className="immersive-game" aria-label={room.name} data-models-ready={modelsReady}>
       <h1 className="game-screen-reader">{room.name}</h1>
@@ -67,7 +93,7 @@ export function WaitingRoom({
             </div>
           }
         >
-          <AuctionRoom state={state} targeting={false} onReady={onReady} />
+          <AuctionRoom state={state} targeting={selected !== null} onReady={onReady} />
         </Suspense>
       </div>
       <div className="room-hud">
@@ -166,6 +192,41 @@ export function WaitingRoom({
                 })}
               </div>
             </section>
+            <section className="hud-items" aria-label="장난 아이템">
+              {items.map((item) => (
+                <button
+                  key={item.code}
+                  type="button"
+                  className={selected === item.code ? 'hud-item selected' : 'hud-item'}
+                  aria-label={`${item.name} 선택, ${item.quantity}개 보유`}
+                  aria-pressed={selected === item.code}
+                  disabled={!online || item.quantity === 0 || throwsLeft === 0}
+                  onClick={() => setSelected(selected === item.code ? null : item.code)}
+                >
+                  <ObjectArt kind={item.code} />
+                  <span>
+                    {item.name} <strong>×{item.quantity}</strong>
+                  </span>
+                </button>
+              ))}
+              <small className="hud-items-left">이번 판 {throwsLeft}/3</small>
+            </section>
+            {selected && (
+              <section className="hud-targets" aria-label="던질 상대 선택">
+                <div>
+                  <span>{ITEM_NAMES[selected]}를 던질 친구를 골라요</span>
+                  <button
+                    type="button"
+                    className="hud-quiet"
+                    aria-label="선택 취소"
+                    onClick={() => setSelected(null)}
+                  >
+                    <XIcon size={16} />
+                  </button>
+                </div>
+                <Players state={state} selected={selected} onThrow={throwItem} />
+              </section>
+            )}
           </>
         ) : (
           <>

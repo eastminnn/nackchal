@@ -1,8 +1,7 @@
 import { CheckIcon, PlusIcon } from '@phosphor-icons/react';
 import type { GameTransport, ItemKind, RoomState } from '../../game/types';
-import { ITEM_NAMES, ITEM_PRICES } from '../../game/types';
+import { ITEM_NAMES } from '../../game/types';
 import { ObjectArt } from '../art/ObjectArt';
-import { Button, Cash } from '../ui/primitives';
 
 export function Loadout({ state, server }: { readonly state: RoomState; readonly server: GameTransport }) {
   const add = (item: ItemKind) =>
@@ -65,35 +64,5 @@ export function Loadout({ state, server }: { readonly state: RoomState; readonly
         })}
       </div>
     </section>
-  );
-}
-export function Shop({ state, server }: { readonly state: RoomState; readonly server: GameTransport }) {
-  return (
-    <div className="shop-content">
-      <p>친구의 선택이 수상할 땐, 토마토 하나.</p>
-      <Cash amount={state.cash} />
-      <div className="shop-grid">
-        {(['tomato', 'can'] as const).map((item) => (
-          <article className="shop-item" key={item}>
-            <ObjectArt kind={item} />
-            <h3>{ITEM_NAMES[item]}</h3>
-            <p>
-              {item === 'tomato'
-                ? '얼굴에 철퍽! 다음 라운드까지 흔적이 남아요.'
-                : '통! 소리와 함께 캐릭터가 깜짝 놀라요.'}
-            </p>
-            <span className="muted">보유 {state.inventory[item]}개</span>
-            <Button
-              variant="secondary"
-              disabled={state.cash < ITEM_PRICES[item]}
-              onClick={() => server.send({ type: 'BUY_ITEM', payload: { item } })}
-            >
-              {ITEM_PRICES[item]} 캐시로 구매
-            </Button>
-          </article>
-        ))}
-      </div>
-      <p className="demo-note">데모 체험용 12캐시와 아이템이 지급됩니다. 새로고침하면 초기화돼요.</p>
-    </div>
   );
 }

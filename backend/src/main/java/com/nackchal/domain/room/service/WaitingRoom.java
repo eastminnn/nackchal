@@ -24,6 +24,8 @@ final class WaitingRoom {
     AuctionGame game;
     /** DB에 기록 중인 게임 시작. 기록이 끝나면 game으로 바뀌거나 취소된다. */
     GameStart starting;
+    /** 진행 중인 판의 아이템 던지기 제한. 판이 바뀌면 새로 만든다. */
+    ItemThrows itemThrows;
 
     WaitingRoom(String id, String name) { this.id = id; this.name = name; }
 
