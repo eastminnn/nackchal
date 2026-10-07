@@ -1,7 +1,14 @@
 import type { ReactNode } from 'react';
+import type { CharacterModel } from '../../data/characters';
 import { BrandMark } from '../brand/BrandMark';
 
-export function AuthLayout({ children }: { readonly children: ReactNode }) {
+export function AuthLayout({
+  children,
+  character,
+}: {
+  readonly children: ReactNode;
+  readonly character?: CharacterModel;
+}) {
   return (
     <div className="lobby-shell auth-shell">
       <header className="site-header container">
@@ -12,7 +19,13 @@ export function AuthLayout({ children }: { readonly children: ReactNode }) {
       <main className="auth-layout" id="main-content">
         <div className="auth-character" aria-hidden="true">
           <div className="profile-character">
-            <img src="/art/residents/plush-lobby.webp" width="600" height="680" alt="" fetchPriority="high" />
+            <img
+              src={`/art/residents/${character ?? 'plush-lobby'}.webp`}
+              width="600"
+              height="680"
+              alt=""
+              fetchPriority="high"
+            />
           </div>
           <p>네 자리를 비워 뒀어.</p>
         </div>

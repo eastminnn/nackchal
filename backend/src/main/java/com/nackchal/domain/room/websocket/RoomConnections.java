@@ -9,6 +9,7 @@ import com.nackchal.domain.room.model.RoomEmotedEvent;
 import com.nackchal.domain.room.model.RoomItemThrownEvent;
 import com.nackchal.domain.item.event.InventoryChangedEvent;
 import com.nackchal.domain.room.service.RoomService;
+import com.nackchal.domain.user.event.ProfileChangedEvent;
 import com.nackchal.domain.wallet.event.WalletChangedEvent;
 import com.nackchal.domain.user.dto.response.UserResponse;
 import java.io.IOException;
@@ -160,6 +161,14 @@ public class RoomConnections {
                 "quantity", event.quantity(), "gameRemaining", event.gameRemaining());
         connections.values().stream().filter(connection -> connection.actor.userId().equals(event.userId()))
                 .forEach(connection -> send(connection, inventory));
+    }
+
+    /** 캐릭터가 바뀐 사용자의 열린 연결이 다음에 만들거나 들어가는 방부터 새 캐릭터를 쓰게 한다. */
+    @EventListener
+    public void profileChanged(ProfileChangedEvent event) {
+        connections.values().stream().filter(connection -> connection.actor.userId().equals(event.userId()))
+                .forEach(connection -> connection.actor = new RoomActor(event.userId(),
+                        connection.actor.connectionId(), event.nickname(), event.avatarCode()));
     }
 
     /** 정산으로 캐시가 바뀐 사용자의 열린 연결에만 새 잔액을 보낸다. 다른 참가자에게는 알리지 않는다. */

@@ -71,6 +71,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/wallet").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/shop").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/shop/purchases").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/me/avatar").authenticated()
                         .anyRequest().denyAll())
                 .requestCache(cache -> cache.disable())
                 .formLogin(form -> form.disable())

@@ -1,8 +1,10 @@
 import { ArrowRightIcon, MagnifyingGlassIcon, PlusIcon, UsersIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
-import type { User } from '../auth/api';
+import { AuthError, changeAvatar, type User } from '../auth/api';
+import { CharacterPicker } from '../components/art/CharacterPicker';
 import { Loadout } from '../components/game/Shop';
 import { Button } from '../components/ui/primitives';
+import { CHARACTER_NAMES, type CharacterModel } from '../data/characters';
 import { ROOM_STATUS, type RoomInfo } from '../data/rooms';
 import type { GameTransport, RoomState } from '../game/types';
 
@@ -19,6 +21,7 @@ export function Lobby({
   rooms,
   onEnter,
   onCreate,
+  onUserChange,
   disabled = false,
 }: {
   readonly disabled?: boolean;
@@ -28,8 +31,25 @@ export function Lobby({
   readonly rooms: readonly RoomInfo[];
   readonly onEnter: (room: RoomInfo, nickname: string) => void;
   readonly onCreate: (nickname: string) => void;
+  readonly onUserChange: (user: User) => void;
 }) {
   const nickname = user.nickname;
+  const [choosing, setChoosing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+  const pick = async (next: CharacterModel) => {
+    if (saving || next === user.avatarCode) return;
+    setSaving(true);
+    setAvatarError('');
+    try {
+      onUserChange(await changeAvatar(next));
+    } catch (failure) {
+      if (!(failure instanceof AuthError)) throw failure;
+      setAvatarError(failure.message);
+    } finally {
+      setSaving(false);
+    }
+  };
   const [query, setQuery] = useState('');
   const [availableOnly, setAvailableOnly] = useState(false);
   const filtered = rooms.filter(
@@ -42,10 +62,10 @@ export function Lobby({
           <section className="profile-card">
             <div className="profile-character">
               <img
-                src="/art/residents/plush-lobby.webp"
+                src={`/art/residents/${user.avatarCode}.webp`}
                 width="600"
                 height="680"
-                alt="작은 귀와 둥근 발을 가진 곰 봉제인형 캐릭터"
+                alt={`내 캐릭터, ${CHARACTER_NAMES[user.avatarCode]} 봉제인형`}
                 fetchPriority="high"
               />
             </div>
@@ -55,6 +75,32 @@ export function Lobby({
               <p className="error" role="status">
                 {state.error}
               </p>
+              {choosing ? (
+                <div className="profile-avatar">
+                  <CharacterPicker
+                    name="lobby-avatar"
+                    value={user.avatarCode}
+                    disabled={saving || disabled}
+                    onChange={(next) => {
+                      void pick(next);
+                    }}
+                  />
+                  <p className="error" role="alert">
+                    {avatarError}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    className="profile-avatar-toggle"
+                    onClick={() => setChoosing(false)}
+                  >
+                    다 골랐어요
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="ghost" className="profile-avatar-toggle" onClick={() => setChoosing(true)}>
+                  캐릭터 바꾸기
+                </Button>
+              )}
               <p className="profile-hint">오늘도 반가워, 경매사.</p>
             </div>
           </section>

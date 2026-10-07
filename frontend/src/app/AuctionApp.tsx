@@ -23,8 +23,10 @@ export function AuctionApp({
   user,
   arriving,
   onLogout,
+  onUserChange,
 }: {
   readonly user: User;
+  readonly onUserChange: (user: User) => void;
   readonly arriving: boolean;
   readonly onLogout: () => Promise<void>;
 }) {
@@ -95,6 +97,7 @@ export function AuctionApp({
       rooms={rooms}
       onEnter={enterRoom}
       onCreate={createRoom}
+      onUserChange={onUserChange}
       disabled={shared.status !== 'connected' || shared.pending}
     />
   );

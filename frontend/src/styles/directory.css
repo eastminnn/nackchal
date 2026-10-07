@@ -446,3 +446,14 @@
     transform: none;
   }
 }
+.profile-avatar {
+  display: grid;
+  gap: var(--s2);
+  margin-top: 12px;
+}
+.profile-avatar-toggle {
+  justify-self: start;
+  margin-top: 8px;
+  padding-inline: var(--s2);
+  font-size: 13px;
+}

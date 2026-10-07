@@ -371,6 +371,29 @@ class RoomWebSocketIntegrationTests {
     }
 
     @Test
+    void characterChangesOnlyOutsideRoomsAndOpenSocketsUseItWithoutReconnecting() throws Exception {
+        try (var host = account("방장"); var guest = account("손님")) {
+            var socket = host.connect();
+            String roomId = create(socket);
+            var locked = host.patch("/api/users/me/avatar", Map.of("avatarCode", "plush-cat"));
+            assertThat(locked.statusCode()).isEqualTo(409);
+            assertThat(JSON.readTree(locked.body()).path("code").stringValue()).isEqualTo("PROFILE_LOCKED_IN_ROOM");
+
+            socket.accept("LEAVE_ROOM", Map.of());
+            socket.await(node -> type(node, "LEFT"));
+            var changed = host.patch("/api/users/me/avatar", Map.of("avatarCode", "plush-cat"));
+            assertThat(changed.statusCode()).isEqualTo(200);
+
+            String next = create(socket);
+            assertThat(next).isNotEqualTo(roomId);
+            var guestSocket = guest.connect();
+            join(guestSocket, next);
+            var room = guestSocket.state(next, state -> state.path("players").size() == 2);
+            assertThat(player(room, host.userId).path("avatarCode").stringValue()).isEqualTo("plush-cat");
+        }
+    }
+
+    @Test
     void tokenRefreshExtendsOpenSocketsOfSameUserOnly() throws Exception {
         try (var host = account("방장"); var other = account("손님")) {
             var first = host.connect();
@@ -508,6 +531,15 @@ class RoomWebSocketIntegrationTests {
                     .header(csrf.path("headerName").stringValue(), csrf.path("token").stringValue())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(fields))).build(),
+                    HttpResponse.BodyHandlers.ofString());
+        }
+
+        HttpResponse<String> patch(String path, Map<String, Object> fields) throws Exception {
+            var csrf = JSON.readTree(get("/api/auth/csrf").body());
+            return client.send(HttpRequest.newBuilder(URI.create(base + path)).timeout(TIMEOUT)
+                    .header(csrf.path("headerName").stringValue(), csrf.path("token").stringValue())
+                    .header("Content-Type", "application/json")
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(fields))).build(),
                     HttpResponse.BodyHandlers.ofString());
         }
 

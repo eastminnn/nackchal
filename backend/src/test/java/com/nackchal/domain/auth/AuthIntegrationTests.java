@@ -7,6 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
@@ -118,6 +119,50 @@ class AuthIntegrationTests {
             var response = browser.post("/api/auth/register", Map.of("email", input.get("email"),
                     "password", PASSWORD, "nickname", nickname), true);
             assertThat(response.statusCode()).isEqualTo(400);
+        }
+    }
+
+    @Test
+    void registrationKeepsTheChosenCharacterOrDefaultsToBear() throws Exception {
+        try (var chosen = new AuthClient(port); var plain = new AuthClient(port); var wrong = new AuthClient(port)) {
+            var cat = new HashMap<>(newAccount());
+            cat.put("avatarCode", "plush-cat");
+            assertThat(chosen.post("/api/auth/register", cat, true).statusCode()).isEqualTo(201);
+            chosen.post("/api/auth/login", cat, true);
+            assertThat(JsonPath.parse(chosen.get("/api/auth/me").body()).read("$.avatarCode", String.class))
+                    .isEqualTo("plush-cat");
+
+            var bear = newAccount();
+            plain.post("/api/auth/register", bear, true);
+            plain.post("/api/auth/login", bear, true);
+            assertThat(JsonPath.parse(plain.get("/api/auth/me").body()).read("$.avatarCode", String.class))
+                    .isEqualTo("plush-bear");
+
+            var dragon = new HashMap<>(newAccount());
+            dragon.put("avatarCode", "plush-dragon");
+            AuthClient.assertError(wrong.post("/api/auth/register", dragon, true), 400, "INVALID_INPUT_VALUE");
+        }
+    }
+
+    @Test
+    void signedInUsersChangeOnlyTheirOwnCharacter() throws Exception {
+        var input = newAccount();
+        try (var browser = new AuthClient(port); var anonymous = new AuthClient(port)) {
+            browser.post("/api/auth/register", input, true);
+            browser.post("/api/auth/login", input, true);
+
+            var changed = browser.patch("/api/users/me/avatar", Map.of("avatarCode", "plush-dog"), true);
+            assertThat(changed.statusCode()).isEqualTo(200);
+            assertThat(JsonPath.parse(changed.body()).read("$.avatarCode", String.class)).isEqualTo("plush-dog");
+            assertThat(JsonPath.parse(browser.get("/api/auth/me").body()).read("$.avatarCode", String.class))
+                    .isEqualTo("plush-dog");
+
+            AuthClient.assertError(browser.patch("/api/users/me/avatar", Map.of("avatarCode", "plush-dragon"), true),
+                    400, "INVALID_INPUT_VALUE");
+            assertThat(browser.patch("/api/users/me/avatar", Map.of("avatarCode", "plush-cat"), false).statusCode())
+                    .as("CSRF 없이 거절").isEqualTo(403);
+            AuthClient.assertError(anonymous.patch("/api/users/me/avatar", Map.of("avatarCode", "plush-cat"), true),
+                    401, "UNAUTHORIZED");
         }
     }
 

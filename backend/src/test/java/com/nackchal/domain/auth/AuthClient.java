@@ -36,6 +36,17 @@ class AuthClient implements AutoCloseable {
                 .POST(HttpRequest.BodyPublishers.ofString(body)));
     }
 
+    HttpResponse<String> patch(String path, Map<String, String> fields, boolean csrf) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(base + path));
+        if (csrf) {
+            var token = JsonPath.parse(get("/api/auth/csrf").body());
+            request.header(token.read("$.headerName"), token.read("$.token"));
+        }
+        String body = JsonMapper.builder().build().writeValueAsString(fields);
+        return send(request.header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(body)));
+    }
+
     String cookie(String name) {
         return cookies.getCookieStore().getCookies().stream()
                 .filter(cookie -> cookie.getName().equals(name))

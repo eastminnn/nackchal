@@ -109,9 +109,10 @@ DB 확정 전에는 결과를 내보내지 않으므로, 공짜 던지기나 저
 | 요청 | 본문 / 응답 |
 | --- | --- |
 | `GET /api/auth/csrf` | `{headerName, token}`. 변경 요청 전에 받아 헤더에 싣는다 |
-| `POST /api/auth/register` | `{email, password, nickname}` → `201`. 지갑(0캐시)을 같은 트랜잭션에서 만든다 |
+| `POST /api/auth/register` | `{email, password, nickname, avatarCode?}` → `201`. 캐릭터를 안 고르면 곰. 지갑(0캐시)을 같은 트랜잭션에서 만든다 |
 | `POST /api/auth/login` | `{email, password}` → `204`와 access·refresh 쿠키 |
 | `GET /api/auth/me` | `{id, nickname, avatarCode}` |
+| `PATCH /api/users/me/avatar` | `{avatarCode}` → `{id, nickname, avatarCode}`. 방 안(재접속 대기 포함)이면 `409 PROFILE_LOCKED_IN_ROOM` |
 | `POST /api/auth/refresh` | refresh 쿠키 교체·access 재발급 → `204`. 열린 WebSocket 인증도 연장 |
 | `POST /api/auth/logout` | refresh 폐기·쿠키 삭제 → `204`. 열린 WebSocket을 `4403`으로 닫고 방에서 제거 |
 | `GET /api/rooms` | 열린 방 목록 |
@@ -134,6 +135,7 @@ DB 확정 전에는 결과를 내보내지 않으므로, 공짜 던지기나 저
 - 로그아웃하면 refresh는 즉시 폐기되지만, 따로 복사된 access JWT는 남은 유효기간(최대 15분)까지 유효합니다(차단 목록 없음).
 - CORS 전체 허용이나 CSRF 예외는 없습니다. 같은 출처의 `/api` 프록시로만 호출합니다.
 - **WebSocket 핸드셰이크**: JWT 쿠키와 엄격한 Origin 허용 목록을 모두 검사합니다. 사용자 UUID는 JWT에서, 닉네임·캐릭터는 DB에서 읽습니다. 연결의 인증 만료는 `WELCOME.authExpiresAt`으로 알리고, 로그인·갱신이 성공하면 같은 계정의 열린 연결을 연장해 `AUTH_RENEWED`를 보냅니다. 갱신하지 못한 채 만료되면 `4401`로 닫습니다.
+- **캐릭터 바꾸기**: 캐릭터는 `plush-bear`·`plush-bunny`·`plush-cat`·`plush-dog` 중 하나입니다(DB CHECK와 요청 검증이 같은 목록). 방에 있으면 다른 참가자 화면·게임 기록과 어긋나므로 방 밖에서만 바꿀 수 있습니다. 커밋한 뒤 `ProfileChangedEvent`로 그 계정의 열린 연결이 쥔 `RoomActor`를 바꿔, 다시 연결하지 않아도 다음에 만들거나 들어가는 방부터 새 캐릭터로 앉습니다. 방 잠금을 쥔 채 DB를 기다리지 않으려고 "방 밖인지 확인"과 저장을 따로 하므로, 그 사이 다른 탭으로 방에 들어가면 그 방에서는 다시 들어올 때까지 이전 캐릭터로 보입니다.
 
 ## 실시간 프로토콜
 
@@ -234,4 +236,4 @@ DB 확정 전에는 결과를 내보내지 않으므로, 공짜 던지기나 저
 
 **있는 것**: 이메일 가입·로그인·토큰 갱신·로그아웃, 방과 채팅, 온라인 경매와 정산, 캐시 지갑, 상점, 게임 중 아이템 던지기, 무료 모션.
 
-**아직 없는 것**: 이메일 소유 확인, 비밀번호 재설정, 프로필(캐릭터) 변경·탈퇴, 원장·구매·지난 게임 조회 API, 서버 여러 대 구성. 서버가 재시작하면 진행 중인 방과 경매는 사라지고, 정산이 끝내 실패한 판의 보상은 지급되지 않습니다.
+**아직 없는 것**: 이메일 소유 확인, 비밀번호 재설정, 닉네임 변경·탈퇴, 원장·구매·지난 게임 조회 API, 서버 여러 대 구성. 서버가 재시작하면 진행 중인 방과 경매는 사라지고, 정산이 끝내 실패한 판의 보상은 지급되지 않습니다.

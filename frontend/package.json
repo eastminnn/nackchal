@@ -14,6 +14,7 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "qa:lobby": "node scripts/qa/lobby-qa.mjs",
     "qa:auth": "node scripts/qa/auth-qa.mjs",
+    "qa:avatar": "node scripts/qa/avatar-qa.mjs",
     "qa:brand": "node scripts/qa/brand-qa.mjs",
     "qa:game": "node scripts/qa/desktop-qa.mjs",
     "qa:chat": "node scripts/qa/chat-qa.mjs",

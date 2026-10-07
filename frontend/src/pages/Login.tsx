@@ -1,13 +1,16 @@
 import { useRef, useState } from 'react';
 import { AuthError, login, register, registrationSchema, type User } from '../auth/api';
+import { CharacterPicker } from '../components/art/CharacterPicker';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { PasswordField } from '../components/auth/PasswordField';
 import { Button } from '../components/ui/primitives';
+import type { CharacterModel } from '../data/characters';
 
 export function Login({ onLogin }: { readonly onLogin: (user: User) => void }) {
   const [registering, setRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [nickname, setNickname] = useState('');
+  const [character, setCharacter] = useState<CharacterModel>('plush-bear');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [pending, setPending] = useState(false);
@@ -32,7 +35,7 @@ export function Login({ onLogin }: { readonly onLogin: (user: User) => void }) {
       document.getElementById('confirm-password')?.focus();
       return;
     }
-    const input = { email: email.trim().toLowerCase(), password, nickname };
+    const input = { email: email.trim().toLowerCase(), password, nickname, avatarCode: character };
     const parsed = registrationSchema.safeParse(input);
     if (registering && !parsed.success) {
       setError(parsed.error.issues[0]?.message ?? '입력한 내용을 확인해 주세요.');
@@ -60,7 +63,7 @@ export function Login({ onLogin }: { readonly onLogin: (user: User) => void }) {
     }
   };
   return (
-    <AuthLayout>
+    <AuthLayout {...(registering ? { character } : {})}>
       <span className="board-label">작은 숲의 경매 모임</span>
       <h1 ref={heading} tabIndex={-1}>
         {registering ? '처음 왔구나!' : '어서 와, 경매사.'}
@@ -92,6 +95,13 @@ export function Login({ onLogin }: { readonly onLogin: (user: User) => void }) {
               <p className="auth-hint" id="nickname-hint">
                 1~12자 · 글자, 숫자, 밑줄, 하이픈
               </p>
+            </div>
+          )}
+          {registering && (
+            <div className="auth-field">
+              <span className="auth-label">캐릭터</span>
+              <CharacterPicker name="avatar" value={character} onChange={setCharacter} />
+              <p className="auth-hint">로비에서 언제든 바꿀 수 있어요.</p>
             </div>
           )}
           <div className="auth-field">

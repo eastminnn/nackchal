@@ -14,6 +14,10 @@ import java.util.UUID;
 @Table(name = "users")
 public class User {
 
+    /** 고를 수 있는 캐릭터. DB의 users_avatar_code_check와 같은 목록이다. */
+    public static final String AVATAR_PATTERN = "plush-(bear|bunny|cat|dog)";
+    public static final String DEFAULT_AVATAR = "plush-bear";
+
     @Id
     private UUID id;
 
@@ -29,11 +33,15 @@ public class User {
     protected User() {
     }
 
-    public User(String nickname) {
+    public User(String nickname, String avatarCode) {
         this.id = UUID.randomUUID();
         this.nickname = nickname;
-        this.avatarCode = "plush-bear";
+        this.avatarCode = avatarCode == null ? DEFAULT_AVATAR : avatarCode;
         this.createdAt = Instant.now();
+    }
+
+    public void changeAvatar(String avatarCode) {
+        this.avatarCode = avatarCode;
     }
 
     public UUID getId() {
